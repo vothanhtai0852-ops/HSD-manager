@@ -1,37 +1,20 @@
-import { supabase } from "@/lib/supabase";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { verifySessionToken } from "@/lib/session";
 
-export default async function Home() {
-  const { count: usersCount, error: usersError } = await supabase
-    .from("users")
-    .select("*", { count: "exact", head: true });
+export default async function HomePage() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("hsd_session")?.value;
 
-  const { count: productsCount, error: productsError } = await supabase
-    .from("products")
-    .select("*", { count: "exact", head: true });
+  if (!token) {
+    redirect("/login");
+  }
 
-  const { count: catalogCount, error: catalogError } = await supabase
-    .from("product_catalog")
-    .select("*", { count: "exact", head: true });
+  const session = await verifySessionToken(token);
 
-  const error = usersError || productsError || catalogError;
+  if (!session) {
+    redirect("/login");
+  }
 
-  return (
-    <main style={{ padding: "40px", fontFamily: "Arial" }}>
-      <h1>HSD Manager</h1>
-
-      {error ? (
-        <>
-          <h2>Supabase connection: ERROR</h2>
-          <pre>{error.message}</pre>
-        </>
-      ) : (
-        <>
-          <h2>Supabase connection: OK</h2>
-          <p>Users: {usersCount ?? 0}</p>
-          <p>Products: {productsCount ?? 0}</p>
-          <p>Product Catalog: {catalogCount ?? 0}</p>
-        </>
-      )}
-    </main>
-  );
+  redirect("/dashboard");
 }
