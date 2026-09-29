@@ -5,6 +5,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 import LogoutButton from "./LogoutButton";
 import ProductsTable from "./ProductsTable";
 import AddProductForm from "./AddProductForm";
+import UserManagement from "./UserManagement";
 
 export default async function DashboardPage() {
   const cookieStore = await cookies();
@@ -47,8 +48,10 @@ export default async function DashboardPage() {
     </p>
 
     <LogoutButton />
-    
+
     <AddProductForm />
+
+    <UserManagement />
 
     <ProductsTable />
   </main>
