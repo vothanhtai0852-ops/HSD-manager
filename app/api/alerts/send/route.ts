@@ -1,178 +1,391 @@
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 
-import { supabaseServer } from "@/lib/supabase-server";
-import { verifySessionToken } from "@/lib/session";
-import { buildAlertGroups } from "@/lib/alerts/build-alert-groups";
+import {
+  verifySessionToken,
+} from "@/lib/session";
 
-type UserRole =
-  | "ADMIN"
-  | "MANAGER"
-  | "USER";
+import {
+  supabaseServer,
+} from "@/lib/supabase-server";
 
-type CurrentUser = {
-  id: string;
-  username: string;
-  role: UserRole;
-  active: boolean;
+import {
+  buildAlertGroups,
+  filterAlertGroupsByProductIds,
+} from "@/lib/alerts/build-alert-groups";
+
+import {
+  resolveAlertRecipient,
+  type AlertSendMode,
+} from "@/lib/alerts/resolve-alert-recipient";
+
+import {
+  mailer,
+  gmailSender,
+} from "@/lib/mailer";
+
+import {
+  buildAlertEmail,
+} from "@/lib/alerts/build-alert-email";
+
+import {
+  processAlertResults,
+  type RecipientDeliveryResult,
+} from "@/lib/alerts/process-alert-results";
+
+import {
+  writeAlertLogs,
+  type AlertLogInput,
+} from "@/lib/alerts/write-alert-logs";
+
+
+type SendAlertRequest = {
+  confirm?: string;
 };
 
-async function getCurrentUser(): Promise<
-  | {
-      user: CurrentUser;
-      error: null;
-    }
-  | {
-      user: null;
-      error: NextResponse;
-    }
-> {
-  const cookieStore =
-    await cookies();
 
-  const token =
-    cookieStore.get(
-      "hsd_session"
-    )?.value;
+type AlertGroupSendResult = {
+  mode: AlertSendMode;
+  recipientEmail: string;
+  actualRecipientEmail: string;
+  success: boolean;
+  errorMessage: string | null;
+  messageId: string | null;
+};
 
-  if (!token) {
-    return {
-      user: null,
-      error: NextResponse.json(
-        {
-          error:
-            "Chưa đăng nhập.",
-        },
-        {
-          status: 401,
-        }
-      ),
-    };
+
+function getErrorMessage(
+  error: unknown
+): string {
+  if (error instanceof Error) {
+    return error.message;
   }
 
-  const session =
-    await verifySessionToken(
-      token
-    );
-
-  if (!session) {
-    return {
-      user: null,
-      error: NextResponse.json(
-        {
-          error:
-            "Phiên đăng nhập không hợp lệ.",
-        },
-        {
-          status: 401,
-        }
-      ),
-    };
+  if (typeof error === "string") {
+    return error;
   }
 
-  const {
-    data,
-    error,
-  } = await supabaseServer
-    .from("users")
-    .select(`
-      id,
-      username,
-      role,
-      active
-    `)
-    .eq(
-      "id",
-      session.userId
-    )
-    .maybeSingle();
+  return "Không xác định được lỗi gửi email.";
+}
 
-  if (error) {
-    console.error(
-      "ALERT_SEND_USER_ERROR:",
-      error
-    );
 
-    return {
-      user: null,
-      error: NextResponse.json(
-        {
-          error:
-            "Không thể kiểm tra tài khoản.",
-        },
-        {
-          status: 500,
-        }
-      ),
-    };
-  }
+function getSendMode(): AlertSendMode {
+  const mode =
+    process.env.ALERT_SEND_MODE
+      ?.trim()
+      .toUpperCase();
 
   if (
-    !data ||
-    !data.active
+    mode !== "TEST" &&
+    mode !== "LIVE"
   ) {
-    return {
-      user: null,
-      error: NextResponse.json(
-        {
-          error:
-            "Tài khoản không hợp lệ.",
-        },
-        {
-          status: 401,
-        }
-      ),
-    };
+    throw new Error(
+      "ALERT_SEND_MODE phải là TEST hoặc LIVE."
+    );
   }
 
+  return mode;
+}
+
+
+async function sendAlertGroup(
+  group: Parameters<
+    typeof buildAlertEmail
+  >[0],
+  today: string
+) {
+  const recipient =
+    resolveAlertRecipient(
+      group.recipientEmail
+    );
+
+  const email =
+    buildAlertEmail(
+      group,
+      today
+    );
+
+  const info =
+    await mailer.sendMail({
+      from: gmailSender,
+
+      to:
+        recipient.actualRecipientEmail,
+
+      subject:
+        recipient.mode === "TEST"
+          ? `[TEST] ${email.subject}`
+          : email.subject,
+
+      html:
+        email.html,
+    });
+
   return {
-    user:
-      data as CurrentUser,
-    error: null,
+    mode:
+      recipient.mode,
+
+    originalRecipientEmail:
+      recipient.originalRecipientEmail,
+
+    actualRecipientEmail:
+      recipient.actualRecipientEmail,
+
+    messageId:
+      info.messageId,
   };
 }
 
-export async function POST() {
-  let claimToken:
-    string | null = null;
+
+export async function POST(
+  request: NextRequest
+) {
+  /*
+   * ==================================================
+   * 1. BẮT BUỘC XÁC NHẬN
+   * ==================================================
+   */
+
+  let body: SendAlertRequest = {};
 
   try {
-    const auth =
-      await getCurrentUser();
+    body =
+      await request.json();
+  } catch {
+    body = {};
+  }
 
-    if (auth.error) {
-      return auth.error;
-    }
+  if (
+    body.confirm !==
+    "SEND_ALERTS"
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        sendPerformed: false,
+        emailsSent: 0,
 
-    if (
-      auth.user.role !==
-      "ADMIN"
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "Chỉ ADMIN mới có quyền gửi cảnh báo toàn hệ thống.",
-        },
-        {
-          status: 403,
-        }
-      );
-    }
+        message:
+          "Chưa xác nhận gửi cảnh báo. Yêu cầu confirm=SEND_ALERTS.",
+      },
+      {
+        status: 400,
+      }
+    );
+  }
 
-    const result =
+
+  /*
+   * ==================================================
+   * 2. KIỂM TRA SESSION
+   * ==================================================
+   */
+
+  const sessionToken =
+    request.cookies.get(
+      "hsd_session"
+    )?.value;
+
+  if (!sessionToken) {
+    return NextResponse.json(
+      {
+        success: false,
+        sendPerformed: false,
+        emailsSent: 0,
+        message:
+          "Chưa đăng nhập.",
+      },
+      {
+        status: 401,
+      }
+    );
+  }
+
+
+  const session =
+    await verifySessionToken(
+      sessionToken
+    );
+
+  if (!session) {
+    return NextResponse.json(
+      {
+        success: false,
+        sendPerformed: false,
+        emailsSent: 0,
+
+        message:
+          "Phiên đăng nhập không hợp lệ hoặc đã hết hạn.",
+      },
+      {
+        status: 401,
+      }
+    );
+  }
+
+
+  /*
+   * ==================================================
+   * 3. KIỂM TRA USER
+   * ==================================================
+   */
+
+  const {
+    data: currentUser,
+    error: userError,
+  } =
+    await supabaseServer
+      .from("users")
+      .select(
+        `
+          id,
+          username,
+          role,
+          active
+        `
+      )
+      .eq(
+        "id",
+        session.userId
+      )
+      .maybeSingle();
+
+
+  if (
+    userError ||
+    !currentUser
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        sendPerformed: false,
+        emailsSent: 0,
+
+        message:
+          "Không tìm thấy tài khoản.",
+      },
+      {
+        status: 401,
+      }
+    );
+  }
+
+
+  if (!currentUser.active) {
+    return NextResponse.json(
+      {
+        success: false,
+        sendPerformed: false,
+        emailsSent: 0,
+
+        message:
+          "Tài khoản đã bị khóa.",
+      },
+      {
+        status: 403,
+      }
+    );
+  }
+
+
+  /*
+   * ==================================================
+   * 4. CHỈ ADMIN
+   * ==================================================
+   */
+
+  if (
+    currentUser.role !==
+    "ADMIN"
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        sendPerformed: false,
+        emailsSent: 0,
+
+        message:
+          "Chỉ ADMIN mới có quyền gửi cảnh báo.",
+      },
+      {
+        status: 403,
+      }
+    );
+  }
+
+
+  /*
+   * ==================================================
+   * 5. XÁC ĐỊNH SEND MODE
+   * ==================================================
+   */
+
+  let sendMode: AlertSendMode;
+
+  try {
+    sendMode =
+      getSendMode();
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        sendPerformed: false,
+        emailsSent: 0,
+        message:
+          getErrorMessage(error),
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+
+
+  /*
+   * ==================================================
+   * 6. BIẾN THEO DÕI CLAIM
+   * ==================================================
+   */
+
+  let claimToken:
+    | string
+    | null = null;
+
+  let claimedProductIds:
+    string[] = [];
+
+  let sendingStarted = false;
+
+
+  try {
+    /*
+     * ==================================================
+     * 7. BUILD ALERT GROUPS
+     * ==================================================
+     */
+
+    const alertBuild =
       await buildAlertGroups();
 
-    const candidateProductIds = [
-      ...new Set(
-        result.groups.flatMap(
-          (group) =>
-            group.products.map(
-              (product) =>
-                product.id
-            )
+
+    const candidateProductIds =
+      Array.from(
+        new Set(
+          alertBuild.groups.flatMap(
+            (group) =>
+              group.products.map(
+                (product) =>
+                  product.id
+              )
+          )
         )
-      ),
-    ];
+      );
+
+
+    /*
+     * ==================================================
+     * 8. KHÔNG CÓ PRODUCT CẦN BÁO
+     * ==================================================
+     */
 
     if (
       candidateProductIds.length ===
@@ -180,49 +393,64 @@ export async function POST() {
     ) {
       return NextResponse.json({
         success: true,
-
-        validationOnly: true,
-
-        claimPerformed: false,
-        releasePerformed: false,
-        writesPerformed: false,
+        mode: sendMode,
+        sendPerformed: false,
         emailsSent: 0,
-
-        today:
-          result.today,
-
-        summary:
-          result.summary,
+        emailsFailed: 0,
 
         candidateProductCount: 0,
         claimedProductCount: 0,
+        completedProductCount: 0,
+        failedProductCount: 0,
         releasedProductCount: 0,
+
+        alertLogsPrepared: 0,
+        alertLogsWritten: 0,
+
+        today:
+          alertBuild.today,
+
+        summary:
+          alertBuild.summary,
+
+        message:
+          "Không có sản phẩm cần gửi cảnh báo.",
       });
     }
+
+
+    /*
+     * ==================================================
+     * 9. CLAIM PRODUCT
+     * ==================================================
+     */
 
     claimToken =
       crypto.randomUUID();
 
+
     const {
-      data: claimedRows,
+      data: claimRows,
       error: claimError,
-    } = await supabaseServer.rpc(
-      "claim_alert_products",
-      {
-        p_product_ids:
-          candidateProductIds,
+    } =
+      await supabaseServer.rpc(
+        "claim_alert_products",
+        {
+          p_product_ids:
+            candidateProductIds,
 
-        p_claim_token:
-          claimToken,
+          p_claim_token:
+            claimToken,
 
-        p_stale_after_minutes:
-          15,
-      }
-    );
+          p_stale_after_minutes:
+            15,
+        }
+      );
+
 
     if (claimError) {
       console.error(
-        "ALERT_CLAIM_TEST_ERROR:",
+        "CLAIM_ALERT_PRODUCTS_ERROR:",
         claimError
       );
 
@@ -231,62 +459,774 @@ export async function POST() {
       );
     }
 
-    const claimedProductIds =
+
+    claimedProductIds =
       (
-        claimedRows ?? []
-      ).map(
-        (
-          row: {
-            product_id: string;
-          }
-        ) =>
-          row.product_id
+        claimRows ??
+        []
+      )
+        .map(
+          (
+            row: {
+              product_id: string;
+            }
+          ) =>
+            row.product_id
+        )
+        .filter(Boolean);
+
+
+    /*
+     * ==================================================
+     * 10. KHÔNG CLAIM ĐƯỢC PRODUCT
+     * ==================================================
+     */
+
+    if (
+      claimedProductIds.length ===
+      0
+    ) {
+      claimToken = null;
+
+      return NextResponse.json({
+        success: true,
+        mode: sendMode,
+        sendPerformed: false,
+        emailsSent: 0,
+        emailsFailed: 0,
+
+        candidateProductCount:
+          candidateProductIds.length,
+
+        claimedProductCount: 0,
+        completedProductCount: 0,
+        failedProductCount: 0,
+        releasedProductCount: 0,
+
+        alertLogsPrepared: 0,
+        alertLogsWritten: 0,
+
+        today:
+          alertBuild.today,
+
+        summary:
+          alertBuild.summary,
+
+        message:
+          "Không claim được sản phẩm nào. Có thể một tiến trình khác đang xử lý cảnh báo.",
+      });
+    }
+
+
+    /*
+     * ==================================================
+     * 11. GIỮ GROUP CỦA PRODUCT ĐÃ CLAIM
+     * ==================================================
+     */
+
+    const claimedGroups =
+      filterAlertGroupsByProductIds(
+        alertBuild.groups,
+        claimedProductIds
       );
+
+
+    /*
+     * ==================================================
+     * 12. BIẾN KẾT QUẢ
+     * ==================================================
+     */
+
+    const deliveryResults:
+      RecipientDeliveryResult[] = [];
+
+    const groupSendResults:
+      AlertGroupSendResult[] = [];
+
+    const alertLogEntries:
+      AlertLogInput[] = [];
+
+
+    /*
+     * ==================================================
+     * 13. GỬI EMAIL
+     * ==================================================
+     */
+
+    sendingStarted = true;
+
+
+    for (
+      const group of
+      claimedGroups
+    ) {
+      /*
+       * Resolve trước try-send để kể cả khi SMTP lỗi,
+       * response vẫn biết email thực tế định gửi tới đâu.
+       */
+      let resolvedRecipient:
+        ReturnType<
+          typeof resolveAlertRecipient
+        >;
+
+      try {
+        resolvedRecipient =
+          resolveAlertRecipient(
+            group.recipientEmail
+          );
+      } catch (error) {
+        const errorMessage =
+          getErrorMessage(error);
+
+        deliveryResults.push({
+          recipientEmail:
+            group.recipientEmail,
+
+          success: false,
+        });
+
+        groupSendResults.push({
+          mode: sendMode,
+
+          recipientEmail:
+            group.recipientEmail,
+
+          actualRecipientEmail:
+            "",
+
+          success: false,
+
+          errorMessage,
+
+          messageId: null,
+        });
+
+        continue;
+      }
+
+
+      try {
+        const result =
+          await sendAlertGroup(
+            group,
+            alertBuild.today
+          );
+
+
+        deliveryResults.push({
+          recipientEmail:
+            group.recipientEmail,
+
+          success: true,
+        });
+
+
+        groupSendResults.push({
+          mode:
+            result.mode,
+
+          recipientEmail:
+            group.recipientEmail,
+
+          actualRecipientEmail:
+            result.actualRecipientEmail,
+
+          success: true,
+
+          errorMessage: null,
+
+          messageId:
+            result.messageId ??
+            null,
+        });
+      } catch (error) {
+        const errorMessage =
+          getErrorMessage(error);
+
+
+        console.error(
+          "ALERT_EMAIL_SEND_ERROR:",
+          {
+            recipient:
+              group.recipientEmail,
+
+            actualRecipient:
+              resolvedRecipient
+                .actualRecipientEmail,
+
+            mode:
+              resolvedRecipient.mode,
+
+            error:
+              errorMessage,
+          }
+        );
+
+
+        deliveryResults.push({
+          recipientEmail:
+            group.recipientEmail,
+
+          success: false,
+        });
+
+
+        groupSendResults.push({
+          mode:
+            resolvedRecipient.mode,
+
+          recipientEmail:
+            group.recipientEmail,
+
+          actualRecipientEmail:
+            resolvedRecipient
+              .actualRecipientEmail,
+
+          success: false,
+
+          errorMessage,
+
+          messageId: null,
+        });
+      }
+    }
+
+
+    /*
+     * ==================================================
+     * 14. TÍNH KẾT QUẢ THEO PRODUCT
+     * ==================================================
+     */
 
     const {
-      data: releasedCount,
-      error: releaseError,
-    } = await supabaseServer.rpc(
-      "release_alert_claim",
-      {
-        p_claim_token:
-          claimToken,
-
-        p_product_ids:
-          claimedProductIds,
-      }
-    );
-
-    if (releaseError) {
-      console.error(
-        "ALERT_RELEASE_TEST_ERROR:",
-        releaseError
+      completedProductIds,
+      failedProductIds,
+    } =
+      processAlertResults(
+        claimedGroups,
+        deliveryResults
       );
 
-      throw new Error(
-        "Claim thành công nhưng không thể release."
+
+    /*
+     * ==================================================
+     * 15. CHUẨN BỊ LOG TRONG RAM
+     * ==================================================
+     */
+
+    for (
+      const group of
+      claimedGroups
+    ) {
+      const normalizedRecipient =
+        group.recipientEmail
+          .trim()
+          .toLowerCase();
+
+
+      const delivery =
+        deliveryResults.find(
+          (result) =>
+            result
+              .recipientEmail
+              .trim()
+              .toLowerCase() ===
+            normalizedRecipient
+        );
+
+
+      const sendResult =
+        groupSendResults.find(
+          (result) =>
+            result
+              .recipientEmail
+              .trim()
+              .toLowerCase() ===
+            normalizedRecipient
+        );
+
+
+      for (
+        const product of
+        group.products
+      ) {
+        alertLogEntries.push({
+          recipientEmail:
+            group.recipientEmail,
+
+          product,
+
+          status:
+            delivery?.success === true
+              ? "SENT"
+              : "FAILED",
+
+          errorMessage:
+            delivery?.success === true
+              ? null
+              : (
+                  sendResult
+                    ?.errorMessage ??
+                  "Không xác định được lỗi gửi email."
+                ),
+        });
+      }
+    }
+
+
+    /*
+     * ==================================================
+     * 16. TEST MODE
+     * ==================================================
+     *
+     * TEST tuyệt đối không thay đổi trạng thái cảnh báo.
+     *
+     * - không complete_alert_claim
+     * - không alert_sent = true
+     * - không last_alert_at
+     * - không writeAlertLogs
+     * - release toàn bộ claim
+     */
+
+    if (
+      sendMode === "TEST"
+    ) {
+      const {
+        data: releasedRows,
+        error: releaseError,
+      } =
+        await supabaseServer.rpc(
+          "release_alert_claim",
+          {
+            p_claim_token:
+              claimToken,
+
+            p_product_ids:
+              claimedProductIds,
+          }
+        );
+
+
+      if (releaseError) {
+        console.error(
+          "TEST_RELEASE_ALERT_CLAIM_ERROR:",
+          releaseError
+        );
+
+        /*
+         * Không đặt claimToken = null.
+         * Claim được giữ để tránh trạng thái
+         * khó đoán nếu DB release thất bại.
+         */
+        return NextResponse.json(
+          {
+            success: false,
+
+            mode:
+              sendMode,
+
+            sendPerformed: true,
+
+            emailsSent:
+              groupSendResults.filter(
+                (result) =>
+                  result.success
+              ).length,
+
+            emailsFailed:
+              groupSendResults.filter(
+                (result) =>
+                  !result.success
+              ).length,
+
+            candidateProductCount:
+              candidateProductIds.length,
+
+            claimedProductCount:
+              claimedProductIds.length,
+
+            completedProductCount: 0,
+
+            failedProductCount:
+              failedProductIds.length,
+
+            releasedProductCount: 0,
+
+            alertLogsPrepared:
+              alertLogEntries.length,
+
+            alertLogsWritten: 0,
+
+            message:
+              "TEST đã gửi email nhưng không thể release claim. Không có sản phẩm nào được đánh dấu đã báo.",
+          },
+          {
+            status: 500,
+          }
+        );
+      }
+
+
+      const releasedCount =
+        Number(
+          releasedRows ?? 0
+        );
+
+
+      /*
+       * TEST đã release toàn bộ claim.
+       */
+      claimToken = null;
+
+
+      const successfulGroups =
+        groupSendResults.filter(
+          (result) =>
+            result.success
+        );
+
+
+      const failedGroups =
+        groupSendResults.filter(
+          (result) =>
+            !result.success
+        );
+
+
+      return NextResponse.json({
+        success:
+          failedGroups.length ===
+          0,
+
+        mode:
+          "TEST",
+
+        sendPerformed: true,
+
+        emailsSent:
+          successfulGroups.length,
+
+        emailsFailed:
+          failedGroups.length,
+
+        candidateProductCount:
+          candidateProductIds.length,
+
+        claimedProductCount:
+          claimedProductIds.length,
+
+        /*
+         * TEST luôn bằng 0.
+         */
+        completedProductCount: 0,
+
+        /*
+         * Đây chỉ là số product có ít nhất
+         * một recipient test gửi thất bại.
+         */
+        failedProductCount:
+          failedProductIds.length,
+
+        releasedProductCount:
+          releasedCount,
+
+        recipientGroupCount:
+          claimedGroups.length,
+
+        alertLogsPrepared:
+          alertLogEntries.length,
+
+        /*
+         * TEST không ghi production log.
+         */
+        alertLogsWritten: 0,
+
+        today:
+          alertBuild.today,
+
+        summary:
+          alertBuild.summary,
+
+        deliveries:
+          groupSendResults,
+
+        message:
+          "TEST hoàn tất. Email chỉ được gửi về GMAIL_USER. Không thay đổi alert_sent, last_alert_at hoặc alert_logs.",
+      });
+    }
+
+
+    /*
+     * ==================================================
+     * 17. LIVE MODE
+     * ==================================================
+     *
+     * Từ đây trở xuống chắc chắn sendMode === LIVE.
+     */
+
+
+    /*
+     * ==================================================
+     * 18. COMPLETE PRODUCT THÀNH CÔNG
+     * ==================================================
+     */
+
+    let completedCount = 0;
+
+
+    if (
+      completedProductIds.length >
+      0
+    ) {
+      const {
+        data: completedRows,
+        error: completeError,
+      } =
+        await supabaseServer.rpc(
+          "complete_alert_claim",
+          {
+            p_claim_token:
+              claimToken,
+
+            p_product_ids:
+              completedProductIds,
+          }
+        );
+
+
+      if (completeError) {
+        console.error(
+          "COMPLETE_ALERT_CLAIM_ERROR:",
+          completeError
+        );
+
+        /*
+         * SMTP đã chạy.
+         *
+         * Không release các product thành công
+         * vì làm vậy có thể khiến lần sau gửi trùng.
+         */
+        return NextResponse.json(
+          {
+            success: false,
+
+            mode:
+              "LIVE",
+
+            sendPerformed: true,
+
+            emailsSent:
+              groupSendResults.filter(
+                (result) =>
+                  result.success
+              ).length,
+
+            emailsFailed:
+              groupSendResults.filter(
+                (result) =>
+                  !result.success
+              ).length,
+
+            candidateProductCount:
+              candidateProductIds.length,
+
+            claimedProductCount:
+              claimedProductIds.length,
+
+            completedProductCount: 0,
+
+            failedProductCount:
+              failedProductIds.length,
+
+            releasedProductCount: 0,
+
+            alertLogsWritten: 0,
+
+            message:
+              "Email LIVE đã được xử lý nhưng không thể cập nhật trạng thái hoàn tất. Claim được giữ lại để giảm nguy cơ gửi trùng.",
+          },
+          {
+            status: 500,
+          }
+        );
+      }
+
+
+      completedCount =
+        completedRows?.length ??
+        0;
+    }
+
+
+    /*
+     * ==================================================
+     * 19. RELEASE PRODUCT THẤT BẠI
+     * ==================================================
+     */
+
+    let releasedCount = 0;
+
+
+    if (
+      failedProductIds.length >
+      0
+    ) {
+      const {
+        data: releasedRows,
+        error: releaseError,
+      } =
+        await supabaseServer.rpc(
+          "release_alert_claim",
+          {
+            p_claim_token:
+              claimToken,
+
+            p_product_ids:
+              failedProductIds,
+          }
+        );
+
+
+      if (releaseError) {
+        console.error(
+          "RELEASE_ALERT_CLAIM_ERROR:",
+          releaseError
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+
+            mode:
+              "LIVE",
+
+            sendPerformed: true,
+
+            emailsSent:
+              groupSendResults.filter(
+                (result) =>
+                  result.success
+              ).length,
+
+            emailsFailed:
+              groupSendResults.filter(
+                (result) =>
+                  !result.success
+              ).length,
+
+            candidateProductCount:
+              candidateProductIds.length,
+
+            claimedProductCount:
+              claimedProductIds.length,
+
+            completedProductCount:
+              completedCount,
+
+            failedProductCount:
+              failedProductIds.length,
+
+            releasedProductCount: 0,
+
+            alertLogsWritten: 0,
+
+            message:
+              "Email LIVE đã được xử lý nhưng không thể release một số sản phẩm gửi thất bại.",
+          },
+          {
+            status: 500,
+          }
+        );
+      }
+
+
+      releasedCount =
+        Number(
+          releasedRows ?? 0
+        );
+    }
+
+
+    /*
+     * Các product thuộc claim đã được:
+     *
+     * - complete
+     * hoặc
+     * - release
+     */
+    claimToken = null;
+
+
+    /*
+     * ==================================================
+     * 20. GHI ALERT LOG CHỈ TRONG LIVE
+     * ==================================================
+     *
+     * Log thất bại không được phép biến email
+     * đã gửi thành "chưa gửi".
+     */
+
+    let alertLogsWritten = 0;
+
+    let alertLogError:
+      | string
+      | null = null;
+
+
+    try {
+      await writeAlertLogs(
+        alertLogEntries
+      );
+
+      alertLogsWritten =
+        alertLogEntries.length;
+    } catch (error) {
+      alertLogError =
+        getErrorMessage(error);
+
+      console.error(
+        "WRITE_ALERT_LOGS_ERROR:",
+        error
       );
     }
 
-    claimToken = null;
+
+    /*
+     * ==================================================
+     * 21. LIVE RESPONSE
+     * ==================================================
+     */
+
+    const successfulGroups =
+      groupSendResults.filter(
+        (result) =>
+          result.success
+      );
+
+
+    const failedGroups =
+      groupSendResults.filter(
+        (result) =>
+          !result.success
+      );
+
 
     return NextResponse.json({
-      success: true,
+      success:
+        failedGroups.length ===
+          0 &&
+        alertLogError === null,
 
-      validationOnly: true,
+      mode:
+        "LIVE",
 
-      claimPerformed: true,
-      releasePerformed: true,
+      sendPerformed: true,
 
-      writesPerformed: true,
+      emailsSent:
+        successfulGroups.length,
 
-      emailsSent: 0,
-
-      today:
-        result.today,
-
-      summary:
-        result.summary,
+      emailsFailed:
+        failedGroups.length,
 
       candidateProductCount:
         candidateProductIds.length,
@@ -294,31 +1234,92 @@ export async function POST() {
       claimedProductCount:
         claimedProductIds.length,
 
-      releasedProductCount:
-        Number(
-          releasedCount ?? 0
-        ),
+      completedProductCount:
+        completedCount,
 
-      claimedProductIds,
+      failedProductCount:
+        failedProductIds.length,
+
+      releasedProductCount:
+        releasedCount,
+
+      recipientGroupCount:
+        claimedGroups.length,
+
+      alertLogsPrepared:
+        alertLogEntries.length,
+
+      alertLogsWritten,
+
+      alertLogError,
+
+      today:
+        alertBuild.today,
+
+      summary:
+        alertBuild.summary,
+
+      deliveries:
+        groupSendResults,
+
+      message:
+        alertLogError
+          ? "Gửi cảnh báo LIVE hoàn tất nhưng ghi alert_logs bị lỗi."
+          : failedGroups.length > 0
+            ? "Gửi cảnh báo LIVE hoàn tất, nhưng có recipient gửi thất bại."
+            : "Gửi cảnh báo LIVE hoàn tất.",
     });
   } catch (error) {
+    const errorMessage =
+      getErrorMessage(
+        error
+      );
+
+
+    console.error(
+      "ALERT_SEND_ERROR:",
+      error
+    );
+
+
     /*
-     * Nếu có lỗi sau khi claim nhưng trước khi
-     * release hoàn tất, cố gắng dọn claim.
+     * ==================================================
+     * 22. CLEANUP
+     * ==================================================
+     *
+     * Nếu chưa bắt đầu SMTP:
+     * release claim được.
+     *
+     * Nếu SMTP đã bắt đầu:
+     *
+     * - TEST/LIVE đều không release mù trong catch.
+     * - Nhánh xử lý bình thường phía trên chịu trách nhiệm
+     *   release/complete.
+     *
+     * Điều này tránh email đã gửi nhưng product lập tức
+     * trở thành eligible để gửi lại.
      */
-    if (claimToken) {
+
+    if (
+      !sendingStarted &&
+      claimToken &&
+      claimedProductIds.length >
+        0
+    ) {
       const {
         error: cleanupError,
-      } = await supabaseServer.rpc(
-        "release_alert_claim",
-        {
-          p_claim_token:
-            claimToken,
+      } =
+        await supabaseServer.rpc(
+          "release_alert_claim",
+          {
+            p_claim_token:
+              claimToken,
 
-          p_product_ids:
-            null,
-        }
-      );
+            p_product_ids:
+              claimedProductIds,
+          }
+        );
+
 
       if (cleanupError) {
         console.error(
@@ -328,15 +1329,23 @@ export async function POST() {
       }
     }
 
-    console.error(
-      "ALERT_SEND_VALIDATION_ERROR:",
-      error
-    );
 
     return NextResponse.json(
       {
-        error:
-          "Có lỗi xảy ra khi kiểm tra cơ chế claim cảnh báo.",
+        success: false,
+
+        mode:
+          sendMode,
+
+        sendPerformed:
+          sendingStarted,
+
+        emailsSent: 0,
+
+        message:
+          sendingStarted
+            ? `${errorMessage} Claim được giữ lại để tránh gửi email trùng.`
+            : errorMessage,
       },
       {
         status: 500,
