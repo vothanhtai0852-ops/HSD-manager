@@ -42,6 +42,7 @@ type EmailRow = {
 
 export type AlertProduct = {
   id: string;
+  ownerUserId: string;
   productCode: string;
   productName: string;
   ownerUsername: string;
@@ -527,6 +528,9 @@ export async function buildAlertGroups():
         id:
           product.id,
 
+          ownerUserId:
+          owner.id,
+
         productCode:
           product.product_code,
 
@@ -657,4 +661,36 @@ export async function buildAlertGroups():
     groups:
       groupedRecipients,
   };
+}
+export function filterAlertGroupsByProductIds(
+  groups: AlertGroup[],
+  productIds: string[]
+): AlertGroup[] {
+  const allowedIds =
+    new Set(productIds);
+
+  return groups
+    .map((group) => {
+      const products =
+        group.products.filter(
+          (product) =>
+            allowedIds.has(
+              product.id
+            )
+        );
+
+      return {
+        recipientEmail:
+          group.recipientEmail,
+
+        productCount:
+          products.length,
+
+        products,
+      };
+    })
+    .filter(
+      (group) =>
+        group.productCount > 0
+    );
 }
