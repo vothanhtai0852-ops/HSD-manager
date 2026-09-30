@@ -5,6 +5,12 @@ import {
   type FormEvent,
 } from "react";
 
+import {
+  normalizeVietnamDateInput,
+  vietnamDateToIso,
+} from "@/lib/date-utils";
+
+
 type Product = {
   id: string;
   product_code: string;
@@ -20,10 +26,12 @@ type Product = {
   description: string | null;
 };
 
+
 type Props = {
   product: Product;
   onChanged: () => void;
 };
+
 
 function isoToVietnamDate(
   value: string | null
@@ -32,66 +40,38 @@ function isoToVietnamDate(
     return "";
   }
 
-  const parts = value.split("-");
+  const parts =
+    value.split("-");
 
   if (parts.length !== 3) {
     return value;
   }
 
-  const [year, month, day] = parts;
+  const [
+    year,
+    month,
+    day,
+  ] = parts;
 
   return `${day}/${month}/${year}`;
 }
 
-function vietnamDateToIso(
-  value: string
-): string | null {
-  const trimmed = value.trim();
-
-  const match = trimmed.match(
-    /^(\d{2})\/(\d{2})\/(\d{4})$/
-  );
-
-  if (!match) {
-    return null;
-  }
-
-  const day = Number(match[1]);
-  const month = Number(match[2]);
-  const year = Number(match[3]);
-
-  const date = new Date(
-    Date.UTC(
-      year,
-      month - 1,
-      day
-    )
-  );
-
-  if (
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() !== month - 1 ||
-    date.getUTCDate() !== day
-  ) {
-    return null;
-  }
-
-  return [
-    String(year).padStart(4, "0"),
-    String(month).padStart(2, "0"),
-    String(day).padStart(2, "0"),
-  ].join("-");
-}
 
 export default function ProductActions({
   product,
   onChanged,
 }: Props) {
-  const [editing, setEditing] =
-    useState(false);
+  const [
+    editing,
+    setEditing,
+  ] = useState(false);
 
-  const [productCode, setProductCode] =
-    useState(product.product_code);
+  const [
+    productCode,
+    setProductCode,
+  ] = useState(
+    product.product_code
+  );
 
   const [
     manufactureDate,
@@ -120,13 +100,19 @@ export default function ProductActions({
     )
   );
 
-  const [quantity, setQuantity] =
-    useState(
-      String(product.quantity)
-    );
+  const [
+    quantity,
+    setQuantity,
+  ] = useState(
+    String(product.quantity)
+  );
 
-  const [note, setNote] =
-    useState(product.note ?? "");
+  const [
+    note,
+    setNote,
+  ] = useState(
+    product.note ?? ""
+  );
 
   const [
     description,
@@ -135,11 +121,16 @@ export default function ProductActions({
     product.description ?? ""
   );
 
-  const [loading, setLoading] =
-    useState(false);
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
 
-  const [error, setError] =
-    useState("");
+  const [
+    error,
+    setError,
+  ] = useState("");
+
 
   // ====================================================
   // EDIT
@@ -152,6 +143,13 @@ export default function ProductActions({
 
     setError("");
 
+
+    /*
+     * ================================================
+     * NSX
+     * ================================================
+     */
+
     const nsxIso =
       vietnamDateToIso(
         manufactureDate
@@ -159,11 +157,18 @@ export default function ProductActions({
 
     if (!nsxIso) {
       setError(
-        "NSX phải đúng định dạng DD/MM/YYYY."
+        "NSX không hợp lệ. Ví dụ: 12092026, 120926 hoặc 12/9/2026."
       );
 
       return;
     }
+
+
+    /*
+     * ================================================
+     * HSD
+     * ================================================
+     */
 
     const hsdIso =
       vietnamDateToIso(
@@ -172,11 +177,18 @@ export default function ProductActions({
 
     if (!hsdIso) {
       setError(
-        "HSD phải đúng định dạng DD/MM/YYYY."
+        "HSD không hợp lệ. Ví dụ: 12092026, 120926 hoặc 12/9/2026."
       );
 
       return;
     }
+
+
+    /*
+     * ================================================
+     * NGÀY BÁO LẠI
+     * ================================================
+     */
 
     let reminderIso:
       | string
@@ -190,12 +202,19 @@ export default function ProductActions({
 
       if (!reminderIso) {
         setError(
-          "Ngày báo lại phải đúng định dạng DD/MM/YYYY."
+          "Ngày báo lại không hợp lệ. Ví dụ: 12092026, 120926 hoặc 12/9/2026."
         );
 
         return;
       }
     }
+
+
+    /*
+     * ================================================
+     * SỐ LƯỢNG
+     * ================================================
+     */
 
     const quantityNumber =
       Number(quantity);
@@ -213,6 +232,13 @@ export default function ProductActions({
       return;
     }
 
+
+    /*
+     * ================================================
+     * MÃ SẢN PHẨM
+     * ================================================
+     */
+
     if (!productCode.trim()) {
       setError(
         "Mã sản phẩm không được để trống."
@@ -221,44 +247,53 @@ export default function ProductActions({
       return;
     }
 
+
+    /*
+     * ================================================
+     * GỬI API UPDATE
+     * ================================================
+     */
+
     try {
       setLoading(true);
 
-      const response = await fetch(
-        `/api/products/${product.id}`,
-        {
-          method: "PATCH",
+      const response =
+        await fetch(
+          `/api/products/${product.id}`,
+          {
+            method: "PATCH",
 
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
 
-          body: JSON.stringify({
-            productCode:
-              productCode.trim(),
+            body: JSON.stringify({
+              productCode:
+                productCode.trim(),
 
-            manufactureDate:
-              nsxIso,
+              manufactureDate:
+                nsxIso,
 
-            expiryDate:
-              hsdIso,
+              expiryDate:
+                hsdIso,
 
-            quantity:
-              quantityNumber,
+              quantity:
+                quantityNumber,
 
-            reminderDate:
-              reminderIso,
+              reminderDate:
+                reminderIso,
 
-            note:
-              note.trim() || null,
+              note:
+                note.trim() ||
+                null,
 
-            description:
-              description.trim() ||
-              null,
-          }),
-        }
-      );
+              description:
+                description.trim() ||
+                null,
+            }),
+          }
+        );
 
       const data =
         await response.json();
@@ -284,6 +319,7 @@ export default function ProductActions({
     }
   }
 
+
   // ====================================================
   // DELETE
   // ====================================================
@@ -303,12 +339,13 @@ export default function ProductActions({
     try {
       setLoading(true);
 
-      const response = await fetch(
-        `/api/products/${product.id}`,
-        {
-          method: "DELETE",
-        }
-      );
+      const response =
+        await fetch(
+          `/api/products/${product.id}`,
+          {
+            method: "DELETE",
+          }
+        );
 
       const data =
         await response.json();
@@ -331,6 +368,7 @@ export default function ProductActions({
       setLoading(false);
     }
   }
+
 
   // ====================================================
   // NORMAL VIEW
@@ -372,6 +410,7 @@ export default function ProductActions({
     );
   }
 
+
   // ====================================================
   // EDIT FORM
   // ====================================================
@@ -381,6 +420,10 @@ export default function ProductActions({
       <form
         onSubmit={handleUpdate}
       >
+        {/* =========================================
+            MÃ SẢN PHẨM
+        ========================================== */}
+
         <div>
           <label>
             Mã SP
@@ -400,7 +443,13 @@ export default function ProductActions({
           />
         </div>
 
+
         <br />
+
+
+        {/* =========================================
+            NSX
+        ========================================== */}
 
         <div>
           <label>
@@ -419,11 +468,24 @@ export default function ProductActions({
                 event.target.value
               )
             }
+            onBlur={() =>
+              setManufactureDate(
+                normalizeVietnamDateInput(
+                  manufactureDate
+                )
+              )
+            }
             disabled={loading}
           />
         </div>
 
+
         <br />
+
+
+        {/* =========================================
+            HSD
+        ========================================== */}
 
         <div>
           <label>
@@ -442,11 +504,24 @@ export default function ProductActions({
                 event.target.value
               )
             }
+            onBlur={() =>
+              setExpiryDate(
+                normalizeVietnamDateInput(
+                  expiryDate
+                )
+              )
+            }
             disabled={loading}
           />
         </div>
 
+
         <br />
+
+
+        {/* =========================================
+            SỐ LƯỢNG
+        ========================================== */}
 
         <div>
           <label>
@@ -469,7 +544,13 @@ export default function ProductActions({
           />
         </div>
 
+
         <br />
+
+
+        {/* =========================================
+            NGÀY BÁO LẠI
+        ========================================== */}
 
         <div>
           <label>
@@ -488,11 +569,24 @@ export default function ProductActions({
                 event.target.value
               )
             }
+            onBlur={() =>
+              setReminderDate(
+                normalizeVietnamDateInput(
+                  reminderDate
+                )
+              )
+            }
             disabled={loading}
           />
         </div>
 
+
         <br />
+
+
+        {/* =========================================
+            NOTE
+        ========================================== */}
 
         <div>
           <label>
@@ -513,7 +607,13 @@ export default function ProductActions({
           />
         </div>
 
+
         <br />
+
+
+        {/* =========================================
+            GHI CHÚ
+        ========================================== */}
 
         <div>
           <label>
@@ -533,7 +633,13 @@ export default function ProductActions({
           />
         </div>
 
+
         <br />
+
+
+        {/* =========================================
+            ERROR
+        ========================================== */}
 
         {error && (
           <p>
@@ -542,6 +648,11 @@ export default function ProductActions({
             </strong>
           </p>
         )}
+
+
+        {/* =========================================
+            ACTIONS
+        ========================================== */}
 
         <button
           type="submit"

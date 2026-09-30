@@ -5,41 +5,11 @@ import {
   type FormEvent,
 } from "react";
 
-function convertVietnamDateToIso(
-  value: string
-): string | null {
-  const trimmed = value.trim();
+import {
+  normalizeVietnamDateInput,
+  vietnamDateToIso,
+} from "@/lib/date-utils";
 
-  const match = trimmed.match(
-    /^(\d{2})\/(\d{2})\/(\d{4})$/
-  );
-
-  if (!match) {
-    return null;
-  }
-
-  const day = Number(match[1]);
-  const month = Number(match[2]);
-  const year = Number(match[3]);
-
-  const date = new Date(
-    Date.UTC(year, month - 1, day)
-  );
-
-  if (
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() !== month - 1 ||
-    date.getUTCDate() !== day
-  ) {
-    return null;
-  }
-
-  return [
-    String(year).padStart(4, "0"),
-    String(month).padStart(2, "0"),
-    String(day).padStart(2, "0"),
-  ].join("-");
-}
 
 export default function AddProductForm() {
   const [productCode, setProductCode] =
@@ -80,6 +50,7 @@ export default function AddProductForm() {
   const [success, setSuccess] =
     useState("");
 
+
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>
   ) {
@@ -88,31 +59,52 @@ export default function AddProductForm() {
     setError("");
     setSuccess("");
 
+
+    /*
+     * ================================================
+     * NSX
+     * ================================================
+     */
+
     const nsxIso =
-      convertVietnamDateToIso(
+      vietnamDateToIso(
         manufactureDate
       );
 
     if (!nsxIso) {
       setError(
-        "NSX phải đúng định dạng DD/MM/YYYY."
+        "NSX không hợp lệ. Ví dụ: 12092026, 120926 hoặc 12/9/2026."
       );
 
       return;
     }
 
+
+    /*
+     * ================================================
+     * HSD
+     * ================================================
+     */
+
     const hsdIso =
-      convertVietnamDateToIso(
+      vietnamDateToIso(
         expiryDate
       );
 
     if (!hsdIso) {
       setError(
-        "HSD phải đúng định dạng DD/MM/YYYY."
+        "HSD không hợp lệ. Ví dụ: 12092026, 120926 hoặc 12/9/2026."
       );
 
       return;
     }
+
+
+    /*
+     * ================================================
+     * NGÀY BÁO LẠI
+     * ================================================
+     */
 
     let reminderIso:
       | string
@@ -120,18 +112,25 @@ export default function AddProductForm() {
 
     if (reminderDate.trim()) {
       reminderIso =
-        convertVietnamDateToIso(
+        vietnamDateToIso(
           reminderDate
         );
 
       if (!reminderIso) {
         setError(
-          "Ngày báo lại phải đúng định dạng DD/MM/YYYY."
+          "Ngày báo lại không hợp lệ. Ví dụ: 12092026, 120926 hoặc 12/9/2026."
         );
 
         return;
       }
     }
+
+
+    /*
+     * ================================================
+     * SỐ LƯỢNG
+     * ================================================
+     */
 
     const quantityNumber =
       Number(quantity);
@@ -149,6 +148,13 @@ export default function AddProductForm() {
       return;
     }
 
+
+    /*
+     * ================================================
+     * MÃ SẢN PHẨM
+     * ================================================
+     */
+
     if (!productCode.trim()) {
       setError(
         "Vui lòng nhập mã sản phẩm."
@@ -157,48 +163,58 @@ export default function AddProductForm() {
       return;
     }
 
+
+    /*
+     * ================================================
+     * GỬI API
+     * ================================================
+     */
+
     try {
       setLoading(true);
 
-      const response = await fetch(
-        "/api/products",
-        {
-          method: "POST",
+      const response =
+        await fetch(
+          "/api/products",
+          {
+            method: "POST",
 
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
 
-          body: JSON.stringify({
-            productCode:
-              productCode.trim(),
+            body: JSON.stringify({
+              productCode:
+                productCode.trim(),
 
-            manufactureDate:
-              nsxIso,
+              manufactureDate:
+                nsxIso,
 
-            expiryDate:
-              hsdIso,
+              expiryDate:
+                hsdIso,
 
-            quantity:
-              quantityNumber,
+              quantity:
+                quantityNumber,
 
-            reminderDate:
-              reminderIso,
+              reminderDate:
+                reminderIso,
 
-            note:
-              note.trim() ||
-              null,
+              note:
+                note.trim() ||
+                null,
 
-            description:
-              description.trim() ||
-              null,
-          }),
-        }
-      );
+              description:
+                description.trim() ||
+                null,
+            }),
+          }
+        );
+
 
       const data =
         await response.json();
+
 
       if (!response.ok) {
         throw new Error(
@@ -207,10 +223,16 @@ export default function AddProductForm() {
         );
       }
 
+
       setSuccess(
         data.message ||
           "Thêm sản phẩm thành công."
       );
+
+
+      /*
+       * Reset form
+       */
 
       setProductCode("");
       setManufactureDate("");
@@ -219,6 +241,7 @@ export default function AddProductForm() {
       setQuantity("1");
       setNote("");
       setDescription("");
+
 
       setTimeout(() => {
         window.location.reload();
@@ -234,6 +257,7 @@ export default function AddProductForm() {
     }
   }
 
+
   return (
     <section>
       <h2>
@@ -243,6 +267,10 @@ export default function AddProductForm() {
       <form
         onSubmit={handleSubmit}
       >
+        {/* =========================================
+            MÃ SẢN PHẨM
+        ========================================== */}
+
         <div>
           <label htmlFor="add-product-code">
             Mã sản phẩm
@@ -264,7 +292,13 @@ export default function AddProductForm() {
           />
         </div>
 
+
         <br />
+
+
+        {/* =========================================
+            NSX
+        ========================================== */}
 
         <div>
           <label htmlFor="add-manufacture-date">
@@ -283,12 +317,25 @@ export default function AddProductForm() {
                 event.target.value
               )
             }
+            onBlur={() =>
+              setManufactureDate(
+                normalizeVietnamDateInput(
+                  manufactureDate
+                )
+              )
+            }
             placeholder="DD/MM/YYYY"
             disabled={loading}
           />
         </div>
 
+
         <br />
+
+
+        {/* =========================================
+            HSD
+        ========================================== */}
 
         <div>
           <label htmlFor="add-expiry-date">
@@ -307,12 +354,25 @@ export default function AddProductForm() {
                 event.target.value
               )
             }
+            onBlur={() =>
+              setExpiryDate(
+                normalizeVietnamDateInput(
+                  expiryDate
+                )
+              )
+            }
             placeholder="DD/MM/YYYY"
             disabled={loading}
           />
         </div>
 
+
         <br />
+
+
+        {/* =========================================
+            SỐ LƯỢNG
+        ========================================== */}
 
         <div>
           <label htmlFor="add-quantity">
@@ -336,7 +396,13 @@ export default function AddProductForm() {
           />
         </div>
 
+
         <br />
+
+
+        {/* =========================================
+            NGÀY BÁO LẠI
+        ========================================== */}
 
         <div>
           <label htmlFor="add-reminder-date">
@@ -355,12 +421,25 @@ export default function AddProductForm() {
                 event.target.value
               )
             }
+            onBlur={() =>
+              setReminderDate(
+                normalizeVietnamDateInput(
+                  reminderDate
+                )
+              )
+            }
             placeholder="DD/MM/YYYY - Không bắt buộc"
             disabled={loading}
           />
         </div>
 
+
         <br />
+
+
+        {/* =========================================
+            NOTE
+        ========================================== */}
 
         <div>
           <label htmlFor="add-note">
@@ -382,7 +461,13 @@ export default function AddProductForm() {
           />
         </div>
 
+
         <br />
+
+
+        {/* =========================================
+            GHI CHÚ
+        ========================================== */}
 
         <div>
           <label htmlFor="add-description">
@@ -403,7 +488,13 @@ export default function AddProductForm() {
           />
         </div>
 
+
         <br />
+
+
+        {/* =========================================
+            MESSAGE
+        ========================================== */}
 
         {error && (
           <p>
@@ -420,6 +511,11 @@ export default function AddProductForm() {
             </strong>
           </p>
         )}
+
+
+        {/* =========================================
+            SUBMIT
+        ========================================== */}
 
         <button
           type="submit"
