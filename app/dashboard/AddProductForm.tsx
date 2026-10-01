@@ -208,9 +208,9 @@ export default function AddProductForm() {
       setNote("");
       setDescription("");
 
-      window.setTimeout(() => {
-        window.location.reload();
-      }, 500);
+      window.dispatchEvent(
+        new CustomEvent("hsd:products-changed")
+      );
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Không thể thêm sản phẩm."
