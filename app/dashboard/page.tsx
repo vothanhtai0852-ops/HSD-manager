@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -7,7 +8,6 @@ import { supabaseServer } from "@/lib/supabase-server";
 import LogoutButton from "./LogoutButton";
 import ProductsTable from "./ProductsTable";
 import AddProductForm from "./AddProductForm";
-import Link from "next/link";
 
 
 export default async function DashboardPage() {
@@ -69,7 +69,7 @@ export default async function DashboardPage() {
   return (
     <main className="kk-page">
       {/* =================================================
-          HEADER
+          HEADER BAR
       ================================================== */}
 
       <header
@@ -79,145 +79,150 @@ export default async function DashboardPage() {
       >
         <div
           style={{
+            width: "100%",
+
             display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
 
-            alignItems: "stretch",
+            gap: "18px",
 
-            justifyContent:
-              "space-between",
+            padding: "16px 18px",
+
+            background:
+              "linear-gradient(90deg, var(--kk-red) 0%, var(--kk-red-dark) 100%)",
+
+            borderRadius: "14px",
+
+            boxShadow:
+              "var(--shadow-md)",
 
             flexWrap: "wrap",
-
-            gap: "12px",
           }}
         >
-          {/* BRAND */}
+          {/* LEFT */}
 
           <div
             style={{
               display: "flex",
-
-              alignItems:
-                "stretch",
-
-              flexWrap:
-                "wrap",
-
-              borderRadius:
-                "14px",
-
-              overflow:
-                "hidden",
-
-              boxShadow:
-                "var(--shadow-md)",
+              alignItems: "center",
+              gap: "18px",
+              minWidth: 0,
+              flex: "1 1 620px",
             }}
           >
-            {/* KINGKONG MART */}
-
             <div
               style={{
-                display:
-                  "flex",
-
-                alignItems:
-                  "center",
-
-                padding:
-                  "14px 20px",
-
-                background:
-                  "var(--kk-red)",
-
-                color:
-                  "var(--kk-yellow)",
-
-                fontSize:
-                  "22px",
-
-                fontWeight:
-                  900,
-
-                letterSpacing:
-                  "0.02em",
+                minWidth: 0,
               }}
             >
-              KINGKONG MART
-            </div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: "14px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div
+                  style={{
+                    color:
+                      "var(--kk-yellow)",
+
+                    fontSize:
+                      "24px",
+
+                    fontWeight:
+                      900,
+
+                    letterSpacing:
+                      "0.02em",
+
+                    whiteSpace:
+                      "nowrap",
+                  }}
+                >
+                  KINGKONG MART
+                </div>
 
 
-            {/* AUTO CHECK */}
+                <div
+                  style={{
+                    color:
+                      "#ffffff",
 
-            <div
-              style={{
-                display:
-                  "flex",
+                    fontSize:
+                      "21px",
 
-                alignItems:
-                  "center",
+                    fontWeight:
+                      900,
 
-                padding:
-                  "14px 20px",
+                    letterSpacing:
+                      "0.05em",
 
-                background:
-                  "#ffffff",
+                    whiteSpace:
+                      "nowrap",
+                  }}
+                >
+                  AUTO CHECK
+                </div>
+              </div>
 
-                color:
-                  "#171717",
 
-                borderTop:
-                  "1px solid var(--border)",
+              <div
+                style={{
+                  marginTop: "5px",
 
-                borderRight:
-                  "1px solid var(--border)",
+                  color:
+                    "rgba(255,255,255,0.95)",
 
-                borderBottom:
-                  "1px solid var(--border)",
+                  fontSize:
+                    "15px",
 
-                fontSize:
-                  "20px",
+                  fontWeight:
+                    700,
 
-                fontWeight:
-                  900,
-
-                letterSpacing:
-                  "0.04em",
-              }}
-            >
-              AUTO CHECK
+                  lineHeight:
+                    1.35,
+                }}
+              >
+                Luôn đảm bảo HSD sản phẩm được kiểm soát
+              </div>
             </div>
           </div>
 
 
-          {/* USER / LOGOUT */}
+          {/* RIGHT */}
 
           <div
-            className="kk-card"
             style={{
-              display:
-                "flex",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
 
-              alignItems:
-                "center",
+              gap: "14px",
 
-              gap:
-                "16px",
+              flex: "0 1 auto",
 
-              padding:
-                "10px 14px",
+              paddingLeft: "18px",
 
-              flexWrap:
-                "wrap",
+              borderLeft:
+                "1px solid rgba(255,255,255,0.22)",
             }}
           >
-            <div>
+            <div
+              style={{
+                textAlign: "right",
+                minWidth: 0,
+              }}
+            >
               <div
                 style={{
-                  fontSize:
-                    "12px",
-
                   color:
-                    "var(--text-secondary)",
+                    "rgba(255,255,255,0.78)",
+
+                  fontSize:
+                    "11px",
 
                   marginBottom:
                     "2px",
@@ -229,8 +234,14 @@ export default async function DashboardPage() {
 
               <div
                 style={{
+                  color:
+                    "#ffffff",
+
                   fontWeight:
                     800,
+
+                  fontSize:
+                    "15px",
                 }}
               >
                 {user.display_name ||
@@ -240,11 +251,11 @@ export default async function DashboardPage() {
 
               <div
                 style={{
+                  color:
+                    "rgba(255,255,255,0.82)",
+
                   fontSize:
                     "12px",
-
-                  color:
-                    "var(--text-secondary)",
                 }}
               >
                 {user.username}
@@ -254,114 +265,108 @@ export default async function DashboardPage() {
             </div>
 
 
-            <LogoutButton />
+            <div
+              style={{
+                flexShrink: 0,
+              }}
+            >
+              <LogoutButton />
+            </div>
           </div>
-        </div>
-
-
-        {/* SUBTITLE */}
-
-        <div
-          style={{
-            marginTop:
-              "14px",
-
-            padding:
-              "0 4px",
-          }}
-        >
-          <h1
-            style={{
-              margin:
-                "0 0 4px",
-
-              fontSize:
-                "24px",
-            }}
-          >
-            Luôn đảm bảo HSD sản phẩm được kiểm soát
-          </h1>
-
-
-          <p
-            style={{
-              margin: 0,
-
-              color:
-                "var(--text-secondary)",
-            }}
-          >
-            Theo dõi hạn sử dụng,
-            ngày báo lại và cảnh báo
-            sản phẩm tập trung.
-          </p>
         </div>
       </header>
 
 
       {/* =================================================
-          CONTENT
+          ADD PRODUCT
       ================================================== */}
 
       <AddProductForm />
 
+
+      {/* =================================================
+          USER MANAGEMENT LINK
+      ================================================== */}
+
       {user.role === "ADMIN" && (
-  <section>
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: "16px",
-        flexWrap: "wrap",
-      }}
-    >
-      <div>
-        <h2
-          style={{
-            margin: "0 0 4px",
-          }}
-        >
-          Quản lý tài khoản
-        </h2>
+        <section>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent:
+                "space-between",
 
-        <p
-          style={{
-            margin: 0,
-            color: "var(--text-secondary)",
-          }}
-        >
-          Quản lý nhân viên, quyền truy cập,
-          Gmail nhận cảnh báo và mật khẩu.
-        </p>
-      </div>
+              gap: "16px",
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <h2
+                style={{
+                  margin: "0 0 4px",
+                }}
+              >
+                Quản lý tài khoản
+              </h2>
 
-      <Link
-        href="/dashboard/users"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
+              <p
+                style={{
+                  margin: 0,
+                  color:
+                    "var(--text-secondary)",
+                }}
+              >
+                Quản lý nhân viên, quyền truy cập,
+                Gmail nhận cảnh báo và mật khẩu.
+              </p>
+            </div>
 
-          minHeight: "40px",
 
-          padding: "8px 16px",
+            <Link
+              href="/dashboard/users"
+              style={{
+                display:
+                  "inline-flex",
 
-          borderRadius: "8px",
+                alignItems:
+                  "center",
 
-          background: "var(--kk-red)",
-          color: "#ffffff",
+                justifyContent:
+                  "center",
 
-          fontWeight: 800,
+                minHeight:
+                  "40px",
 
-          textDecoration: "none",
-        }}
-      >
-        Quản lý tài khoản
-      </Link>
-    </div>
-  </section>
-)}
+                padding:
+                  "8px 16px",
+
+                borderRadius:
+                  "8px",
+
+                background:
+                  "var(--kk-red)",
+
+                color:
+                  "#ffffff",
+
+                fontWeight:
+                  800,
+
+                textDecoration:
+                  "none",
+              }}
+            >
+              Quản lý tài khoản
+            </Link>
+          </div>
+        </section>
+      )}
+
+
+      {/* =================================================
+          PRODUCTS
+      ================================================== */}
 
       <ProductsTable />
     </main>
