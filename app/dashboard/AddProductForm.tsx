@@ -36,11 +36,6 @@ export default function AddProductForm() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // ====================================================
-  // PRODUCT SEARCH
-  // Chỉ tìm khi mã có từ 6 ký tự trở lên.
-  // ====================================================
-
   useEffect(() => {
     const query = productCode.trim();
 
@@ -118,10 +113,6 @@ export default function AddProductForm() {
     setProductSuggestions([]);
     setProductSearchDone(true);
   }
-
-  // ====================================================
-  // SUBMIT
-  // ====================================================
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -221,17 +212,8 @@ export default function AddProductForm() {
   }
 
   return (
-    <section>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "16px",
-          flexWrap: "wrap",
-          marginBottom: "18px",
-        }}
-      >
+    <section className="add-product-section">
+      <div className="add-product-heading">
         <div>
           <h2 style={{ margin: "0 0 4px" }}>Thêm sản phẩm</h2>
 
@@ -245,55 +227,17 @@ export default function AddProductForm() {
           </p>
         </div>
 
-        <div
-          style={{
-            padding: "6px 10px",
-            borderRadius: "999px",
-            background: "var(--kk-red-soft)",
-            color: "var(--kk-red)",
-            fontWeight: 800,
-            fontSize: "12px",
-          }}
-        >
+        <div className="add-product-badge">
           AUTO CHECK
         </div>
       </div>
 
-      <form onSubmit={handleSubmit}>
-        {/* =================================================
-            HÀNG 1
-            Mã SP | Tên SP | SL | NSX | HSD | Ngày báo lại
-        ================================================= */}
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "minmax(180px,0.9fr) minmax(360px,2fr) minmax(90px,0.55fr) minmax(160px,0.85fr) minmax(160px,0.85fr) minmax(170px,0.9fr)",
-            gap: "14px",
-            alignItems: "start",
-          }}
-        >
-          {/* MÃ SẢN PHẨM */}
-
-          <div style={{ minWidth: 0 }}>
-            <label
-              htmlFor="add-product-code"
-              style={{
-                display: "block",
-                marginBottom: "6px",
-                fontWeight: 700,
-              }}
-            >
+      <form onSubmit={handleSubmit} className="add-product-form">
+        <div className="add-product-row-one">
+          <div className="add-field add-field-code">
+            <label htmlFor="add-product-code">
               Mã sản phẩm
-              <span
-                style={{
-                  color: "var(--kk-red)",
-                  marginLeft: "4px",
-                }}
-              >
-                *
-              </span>
+              <span className="required-mark">*</span>
             </label>
 
             <input
@@ -307,76 +251,28 @@ export default function AddProductForm() {
               placeholder="Nhập mã SP"
               disabled={loading}
               autoComplete="off"
-              style={{
-                width: "100%",
-              }}
             />
 
             {productCode.trim().length >= 6 && productSearchLoading && (
-              <div
-                style={{
-                  marginTop: "4px",
-                  fontSize: "11px",
-                  color: "var(--text-muted)",
-                }}
-              >
+              <div className="field-help">
                 Đang tìm sản phẩm...
               </div>
             )}
 
             {productSuggestions.length > 0 && (
-              <div
-                style={{
-                  marginTop: "6px",
-                  width: "520px",
-                  maxWidth: "70vw",
-                  maxHeight: "300px",
-                  overflowY: "auto",
-                  background: "#ffffff",
-                  border: "1px solid var(--border)",
-                  borderRadius: "8px",
-                  boxShadow: "var(--shadow-md)",
-                  position: "relative",
-                  zIndex: 20,
-                }}
-              >
+              <div className="product-suggestions">
                 {productSuggestions.map((item) => (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => selectProduct(item)}
-                    style={{
-                      display: "block",
-                      width: "100%",
-                      minHeight: "54px",
-                      padding: "8px 12px",
-                      textAlign: "left",
-                      background: "#ffffff",
-                      border: 0,
-                      borderBottom: "1px solid #edf0f2",
-                      borderRadius: 0,
-                      cursor: "pointer",
-                    }}
+                    className="product-suggestion-item"
                   >
-                    <div
-                      style={{
-                        fontWeight: 800,
-                        color: "var(--foreground)",
-                      }}
-                    >
+                    <div className="suggestion-code">
                       {item.productCode}
                     </div>
 
-                    <div
-                      style={{
-                        marginTop: "2px",
-                        fontSize: "12px",
-                        fontWeight: 400,
-                        color: "var(--text-secondary)",
-                        whiteSpace: "normal",
-                        overflowWrap: "anywhere",
-                      }}
-                    >
+                    <div className="suggestion-name">
                       {item.productName}
                     </div>
                   </button>
@@ -389,63 +285,29 @@ export default function AddProductForm() {
               !productSearchLoading &&
               productSuggestions.length === 0 &&
               !productName && (
-                <div
-                  style={{
-                    marginTop: "4px",
-                    fontSize: "11px",
-                    color: "var(--text-muted)",
-                  }}
-                >
+                <div className="field-help">
                   Không tìm thấy mã phù hợp.
                 </div>
               )}
           </div>
 
-          {/* TÊN SẢN PHẨM */}
-
-          <div style={{ minWidth: 0 }}>
-            <div
-              style={{
-                marginBottom: "6px",
-                fontWeight: 700,
-              }}
-            >
+          <div className="add-field add-field-name">
+            <div className="field-label">
               Tên sản phẩm
             </div>
 
             <div
               title={productName || ""}
-              style={{
-                width: "100%",
-                minHeight: "40px",
-                padding: "8px 11px",
-                border: "1px solid var(--border-strong)",
-                borderRadius: "var(--radius-sm)",
-                background: productName ? "#f7fff9" : "#f4f6f8",
-                color: productName
-                  ? "var(--foreground)"
-                  : "var(--text-muted)",
-                fontWeight: productName ? 700 : 400,
-                lineHeight: 1.35,
-                whiteSpace: "normal",
-                overflowWrap: "anywhere",
-              }}
+              className={`product-name-display ${
+                productName ? "has-product" : ""
+              }`}
             >
               {productName || "Tự động theo mã SP"}
             </div>
           </div>
 
-          {/* SỐ LƯỢNG */}
-
-          <div>
-            <label
-              htmlFor="add-quantity"
-              style={{
-                display: "block",
-                marginBottom: "6px",
-                fontWeight: 700,
-              }}
-            >
+          <div className="add-field">
+            <label htmlFor="add-quantity">
               Số lượng
             </label>
 
@@ -457,32 +319,13 @@ export default function AddProductForm() {
               value={quantity}
               onChange={(event) => setQuantity(event.target.value)}
               disabled={loading}
-              style={{
-                width: "100%",
-              }}
             />
           </div>
 
-          {/* NSX */}
-
-          <div>
-            <label
-              htmlFor="add-manufacture-date"
-              style={{
-                display: "block",
-                marginBottom: "6px",
-                fontWeight: 700,
-              }}
-            >
+          <div className="add-field">
+            <label htmlFor="add-manufacture-date">
               NSX
-              <span
-                style={{
-                  color: "var(--kk-red)",
-                  marginLeft: "4px",
-                }}
-              >
-                *
-              </span>
+              <span className="required-mark">*</span>
             </label>
 
             <input
@@ -501,32 +344,13 @@ export default function AddProductForm() {
               placeholder="DD/MM/YYYY"
               disabled={loading}
               autoComplete="off"
-              style={{
-                width: "100%",
-              }}
             />
           </div>
 
-          {/* HSD */}
-
-          <div>
-            <label
-              htmlFor="add-expiry-date"
-              style={{
-                display: "block",
-                marginBottom: "6px",
-                fontWeight: 700,
-              }}
-            >
+          <div className="add-field">
+            <label htmlFor="add-expiry-date">
               HSD
-              <span
-                style={{
-                  color: "var(--kk-red)",
-                  marginLeft: "4px",
-                }}
-              >
-                *
-              </span>
+              <span className="required-mark">*</span>
             </label>
 
             <input
@@ -541,23 +365,11 @@ export default function AddProductForm() {
               placeholder="DD/MM/YYYY"
               disabled={loading}
               autoComplete="off"
-              style={{
-                width: "100%",
-              }}
             />
           </div>
 
-          {/* NGÀY BÁO LẠI */}
-
-          <div>
-            <label
-              htmlFor="add-reminder-date"
-              style={{
-                display: "block",
-                marginBottom: "6px",
-                fontWeight: 700,
-              }}
-            >
+          <div className="add-field">
+            <label htmlFor="add-reminder-date">
               Ngày báo lại
             </label>
 
@@ -577,39 +389,13 @@ export default function AddProductForm() {
               placeholder="DD/MM/YYYY"
               disabled={loading}
               autoComplete="off"
-              style={{
-                width: "100%",
-              }}
             />
           </div>
         </div>
 
-        {/* =================================================
-            HÀNG 2
-            Note | Ghi chú | Nút thêm
-        ================================================= */}
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "minmax(220px,0.8fr) minmax(520px,2.4fr) auto",
-            gap: "14px",
-            alignItems: "end",
-            marginTop: "16px",
-          }}
-        >
-          {/* NOTE */}
-
-          <div>
-            <label
-              htmlFor="add-note"
-              style={{
-                display: "block",
-                marginBottom: "6px",
-                fontWeight: 700,
-              }}
-            >
+        <div className="add-product-row-two">
+          <div className="add-field">
+            <label htmlFor="add-note">
               Note
             </label>
 
@@ -620,23 +406,11 @@ export default function AddProductForm() {
               onChange={(event) => setNote(event.target.value)}
               placeholder="Note ngắn..."
               disabled={loading}
-              style={{
-                width: "100%",
-              }}
             />
           </div>
 
-          {/* GHI CHÚ */}
-
-          <div>
-            <label
-              htmlFor="add-description"
-              style={{
-                display: "block",
-                marginBottom: "6px",
-                fontWeight: 700,
-              }}
-            >
+          <div className="add-field">
+            <label htmlFor="add-description">
               Ghi chú
             </label>
 
@@ -649,62 +423,284 @@ export default function AddProductForm() {
               }
               placeholder="Ghi chú nếu có..."
               disabled={loading}
-              style={{
-                width: "100%",
-              }}
             />
           </div>
 
-          {/* SUBMIT */}
-
           <button
             type="submit"
-            className="kk-button-primary"
+            className="kk-button-primary add-product-submit"
             disabled={loading}
-            style={{
-              minWidth: "150px",
-              minHeight: "40px",
-              whiteSpace: "nowrap",
-            }}
           >
             {loading ? "Đang thêm..." : "Thêm sản phẩm"}
           </button>
         </div>
 
-        {/* MESSAGE */}
-
         {error && (
-          <div
-            style={{
-              marginTop: "14px",
-              padding: "10px 12px",
-              border: "1px solid #f1b5b5",
-              borderRadius: "8px",
-              background: "var(--danger-soft)",
-              color: "var(--danger)",
-              fontWeight: 700,
-            }}
-          >
+          <div className="add-message add-message-error">
             {error}
           </div>
         )}
 
         {success && (
-          <div
-            style={{
-              marginTop: "14px",
-              padding: "10px 12px",
-              border: "1px solid #acd7ba",
-              borderRadius: "8px",
-              background: "var(--success-soft)",
-              color: "var(--success)",
-              fontWeight: 700,
-            }}
-          >
+          <div className="add-message add-message-success">
             {success}
           </div>
         )}
       </form>
+
+      <style jsx>{`
+        .add-product-section {
+          overflow: visible;
+        }
+
+        .add-product-heading {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          flex-wrap: wrap;
+          margin-bottom: 18px;
+        }
+
+        .add-product-badge {
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: var(--kk-red-soft);
+          color: var(--kk-red);
+          font-weight: 800;
+          font-size: 12px;
+        }
+
+        .add-product-row-one {
+          display: grid;
+          grid-template-columns:
+            minmax(180px, 0.9fr)
+            minmax(360px, 2fr)
+            minmax(90px, 0.55fr)
+            minmax(160px, 0.85fr)
+            minmax(160px, 0.85fr)
+            minmax(170px, 0.9fr);
+          gap: 14px;
+          align-items: start;
+        }
+
+        .add-product-row-two {
+          display: grid;
+          grid-template-columns:
+            minmax(220px, 0.8fr)
+            minmax(520px, 2.4fr)
+            auto;
+          gap: 14px;
+          align-items: end;
+          margin-top: 16px;
+        }
+
+        .add-field {
+          min-width: 0;
+        }
+
+        .add-field label,
+        .field-label {
+          display: block;
+          margin-bottom: 6px;
+          font-weight: 700;
+        }
+
+        .required-mark {
+          color: var(--kk-red);
+          margin-left: 4px;
+        }
+
+        .add-field input {
+          width: 100%;
+        }
+
+        .product-name-display {
+          width: 100%;
+          min-height: 40px;
+          padding: 8px 11px;
+          border: 1px solid var(--border-strong);
+          border-radius: var(--radius-sm);
+          background: #f4f6f8;
+          color: var(--text-muted);
+          font-weight: 400;
+          line-height: 1.35;
+          white-space: normal;
+          overflow-wrap: anywhere;
+        }
+
+        .product-name-display.has-product {
+          background: #f7fff9;
+          color: var(--foreground);
+          font-weight: 700;
+        }
+
+        .field-help {
+          margin-top: 4px;
+          font-size: 11px;
+          color: var(--text-muted);
+        }
+
+        .product-suggestions {
+          position: relative;
+          z-index: 20;
+          width: min(520px, 70vw);
+          max-height: 300px;
+          margin-top: 6px;
+          overflow-y: auto;
+          background: #ffffff;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          box-shadow: var(--shadow-md);
+        }
+
+        .product-suggestion-item {
+          display: block;
+          width: 100%;
+          min-height: 54px;
+          padding: 8px 12px;
+          text-align: left;
+          background: #ffffff;
+          border: 0;
+          border-bottom: 1px solid #edf0f2;
+          border-radius: 0;
+          cursor: pointer;
+        }
+
+        .suggestion-code {
+          font-weight: 800;
+          color: var(--foreground);
+        }
+
+        .suggestion-name {
+          margin-top: 2px;
+          font-size: 12px;
+          font-weight: 400;
+          color: var(--text-secondary);
+          white-space: normal;
+          overflow-wrap: anywhere;
+        }
+
+        .add-product-submit {
+          min-width: 150px;
+          min-height: 40px;
+          white-space: nowrap;
+        }
+
+        .add-message {
+          margin-top: 14px;
+          padding: 10px 12px;
+          border-radius: 8px;
+          font-weight: 700;
+        }
+
+        .add-message-error {
+          border: 1px solid #f1b5b5;
+          background: var(--danger-soft);
+          color: var(--danger);
+        }
+
+        .add-message-success {
+          border: 1px solid #acd7ba;
+          background: var(--success-soft);
+          color: var(--success);
+        }
+
+        @media (max-width: 1180px) {
+          .add-product-row-one {
+            grid-template-columns:
+              minmax(180px, 1fr)
+              minmax(280px, 1.7fr)
+              minmax(100px, 0.55fr);
+          }
+
+          .add-product-row-two {
+            grid-template-columns:
+              minmax(180px, 0.8fr)
+              minmax(320px, 1.7fr)
+              auto;
+          }
+        }
+
+        @media (max-width: 760px) {
+          .add-product-section {
+            padding: 14px;
+          }
+
+          .add-product-heading {
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 14px;
+          }
+
+          .add-product-heading h2 {
+            font-size: 19px;
+          }
+
+          .add-product-heading p {
+            font-size: 12px;
+            line-height: 1.45;
+          }
+
+          .add-product-badge {
+            padding: 5px 9px;
+            font-size: 10px;
+          }
+
+          .add-product-row-one {
+            grid-template-columns:
+              minmax(0, 1fr)
+              minmax(0, 1fr);
+            gap: 11px 10px;
+          }
+
+          .add-field-code,
+          .add-field-name {
+            grid-column: 1 / -1;
+          }
+
+          .add-product-row-two {
+            grid-template-columns: 1fr;
+            gap: 11px;
+            margin-top: 11px;
+          }
+
+          .add-product-submit {
+            width: 100%;
+            min-height: 44px;
+          }
+
+          .product-suggestions {
+            width: 100%;
+            max-width: 100%;
+            max-height: 240px;
+          }
+
+          .add-product-form input,
+          .add-product-form button {
+            font-size: 16px;
+          }
+
+          .add-product-form input {
+            min-height: 42px;
+          }
+
+          .product-name-display {
+            min-height: 42px;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .add-product-row-one {
+            grid-template-columns: 1fr;
+          }
+
+          .add-field-code,
+          .add-field-name {
+            grid-column: auto;
+          }
+        }
+      `}</style>
     </section>
   );
 }
