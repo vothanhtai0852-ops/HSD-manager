@@ -8,6 +8,7 @@ import {
 
 import ProductActions from "./ProductActions";
 
+
 type ProductStatus =
   | "BINH_THUONG"
   | "CANH_BAO"
@@ -15,8 +16,20 @@ type ProductStatus =
   | "DA_BAO"
   | "LOI";
 
+
+type SortOption =
+  | "NEWEST"
+  | "TEN_ASC"
+  | "TEN_DESC"
+  | "PERCENT_ASC"
+  | "PERCENT_DESC"
+  | "HSD_ASC"
+  | "HSD_DESC";
+
+
 type Product = {
   id: string;
+  user_id: string;
 
   product_code: string;
   product_name: string;
@@ -44,8 +57,36 @@ type Product = {
   } | null;
 };
 
+
+type FilterUser = {
+  id: string;
+  username: string;
+  display_name: string | null;
+  role: string;
+  active: boolean;
+};
+
+
+type DashboardStats = {
+  totalProducts: number;
+  warningProducts: number;
+  reminderProducts: number;
+  addedTodayProducts: number;
+};
+
+
 type ProductsResponse = {
   success: boolean;
+
+  user: {
+    id: string;
+    username: string;
+    role: string;
+  };
+
+  stats: DashboardStats;
+
+  filterUsers: FilterUser[];
 
   pagination: {
     page: number;
@@ -57,73 +98,153 @@ type ProductsResponse = {
   products: Product[];
 };
 
+
+const EMPTY_STATS: DashboardStats = {
+  totalProducts: 0,
+  warningProducts: 0,
+  reminderProducts: 0,
+  addedTodayProducts: 0,
+};
+
+
 export default function ProductsTable() {
-  // =========================
+  // ====================================================
   // DATA
-  // =========================
+  // ====================================================
 
-  const [products, setProducts] =
-    useState<Product[]>([]);
+  const [
+    products,
+    setProducts,
+  ] = useState<Product[]>([]);
 
-  const [total, setTotal] =
-    useState(0);
+  const [
+    filterUsers,
+    setFilterUsers,
+  ] = useState<FilterUser[]>([]);
 
-  // =========================
+  const [
+    stats,
+    setStats,
+  ] =
+    useState<DashboardStats>(
+      EMPTY_STATS
+    );
+
+  const [
+    total,
+    setTotal,
+  ] = useState(0);
+
+
+  // ====================================================
   // PAGINATION
-  // =========================
+  // ====================================================
 
-  const [page, setPage] =
-    useState(1);
+  const [
+    page,
+    setPage,
+  ] = useState(1);
 
-  const [pageSize, setPageSize] =
-    useState(30);
+  const [
+    pageSize,
+    setPageSize,
+  ] = useState(30);
 
-  const [totalPages, setTotalPages] =
-    useState(1);
+  const [
+    totalPages,
+    setTotalPages,
+  ] = useState(0);
 
-  // =========================
+
+  // ====================================================
   // SEARCH
-  // =========================
+  // ====================================================
 
-  const [search, setSearch] =
-    useState("");
+  const [
+    search,
+    setSearch,
+  ] = useState("");
 
-  // =========================
+
+  // ====================================================
+  // FILTERS
+  // ====================================================
+
+  const [
+    userFilter,
+    setUserFilter,
+  ] = useState("");
+
+  const [
+    statusFilter,
+    setStatusFilter,
+  ] = useState("");
+
+
+  // ====================================================
+  // SORT
+  // ====================================================
+
+  const [
+    sort,
+    setSort,
+  ] =
+    useState<SortOption>(
+      "NEWEST"
+    );
+
+
+  // ====================================================
   // REFRESH
-  // =========================
+  // ====================================================
 
-  const [refreshKey, setRefreshKey] =
-    useState(0);
+  const [
+    refreshKey,
+    setRefreshKey,
+  ] = useState(0);
 
-  // =========================
+
+  // ====================================================
   // UI
-  // =========================
+  // ====================================================
 
-  const [loading, setLoading] =
-    useState(true);
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
 
-  const [error, setError] =
-    useState("");
+  const [
+    error,
+    setError,
+  ] = useState("");
 
-  // =========================
+
+  // ====================================================
   // LOAD PRODUCTS
-  // =========================
+  // ====================================================
 
   useEffect(() => {
     const controller =
       new AbortController();
+
 
     async function loadProducts() {
       try {
         setLoading(true);
         setError("");
 
+
         const params =
           new URLSearchParams({
-            page: String(page),
+            page:
+              String(page),
+
             pageSize:
               String(pageSize),
+
+            sort,
           });
+
 
         if (search.trim()) {
           params.set(
@@ -131,6 +252,23 @@ export default function ProductsTable() {
             search.trim()
           );
         }
+
+
+        if (userFilter) {
+          params.set(
+            "userId",
+            userFilter
+          );
+        }
+
+
+        if (statusFilter) {
+          params.set(
+            "status",
+            statusFilter
+          );
+        }
+
 
         const response =
           await fetch(
@@ -144,54 +282,101 @@ export default function ProductsTable() {
             }
           );
 
+
         const data =
-          (await response.json()) as
+          (
+            await response.json()
+          ) as
             | ProductsResponse
             | {
                 error?: string;
               };
 
+
         if (!response.ok) {
           throw new Error(
             "error" in data &&
-              data.error
+            data.error
               ? data.error
               : "Không thể tải danh sách sản phẩm."
           );
         }
 
+
         const result =
           data as ProductsResponse;
 
+
         setProducts(
-          result.products ?? []
+          result.products ??
+            []
         );
 
+
+        setFilterUsers(
+          result.filterUsers ??
+            []
+        );
+
+
+        setStats(
+          result.stats ??
+            EMPTY_STATS
+        );
+
+
         setTotal(
-          result.pagination.total ??
+          result.pagination
+            .total ??
             0
         );
 
+
         setTotalPages(
           result.pagination
-            .totalPages ?? 0
+            .totalPages ??
+            0
         );
+
+
+        /*
+         * Nếu API ép page về
+         * trang hợp lệ sau khi
+         * filter/delete.
+         */
+
+        if (
+          result.pagination.page !==
+          page
+        ) {
+          setPage(
+            result.pagination.page
+          );
+        }
       } catch (err) {
         if (
           err instanceof Error &&
-          err.name === "AbortError"
+          err.name ===
+            "AbortError"
         ) {
           return;
         }
+
 
         console.error(
           "LOAD_PRODUCTS_ERROR:",
           err
         );
 
+
         setProducts([]);
+        setFilterUsers([]);
+        setStats(
+          EMPTY_STATS
+        );
         setTotal(0);
         setTotalPages(0);
+
 
         setError(
           err instanceof Error
@@ -200,14 +385,18 @@ export default function ProductsTable() {
         );
       } finally {
         if (
-          !controller.signal.aborted
+          !controller
+            .signal
+            .aborted
         ) {
           setLoading(false);
         }
       }
     }
 
+
     loadProducts();
+
 
     return () => {
       controller.abort();
@@ -216,22 +405,28 @@ export default function ProductsTable() {
     page,
     pageSize,
     search,
+    userFilter,
+    statusFilter,
+    sort,
     refreshKey,
   ]);
 
-  // =========================
+
+  // ====================================================
   // REFRESH TABLE
-  // =========================
+  // ====================================================
 
   function refreshProducts() {
     setRefreshKey(
-      (current) => current + 1
+      (current) =>
+        current + 1
     );
   }
 
-  // =========================
+
+  // ====================================================
   // FORMAT DATE
-  // =========================
+  // ====================================================
 
   function formatDate(
     value: string | null
@@ -240,12 +435,17 @@ export default function ProductsTable() {
       return "-";
     }
 
+
     const parts =
       value.split("-");
 
-    if (parts.length !== 3) {
+
+    if (
+      parts.length !== 3
+    ) {
       return value;
     }
+
 
     const [
       year,
@@ -253,12 +453,14 @@ export default function ProductsTable() {
       day,
     ] = parts;
 
+
     return `${day}/${month}/${year}`;
   }
 
-  // =========================
+
+  // ====================================================
   // FORMAT PRICE
-  // =========================
+  // ====================================================
 
   function formatPrice(
     value: number | null
@@ -270,14 +472,16 @@ export default function ProductsTable() {
       return "-";
     }
 
+
     return value.toLocaleString(
       "vi-VN"
     );
   }
 
-  // =========================
+
+  // ====================================================
   // FORMAT PERCENT
-  // =========================
+  // ====================================================
 
   function formatPercent(
     value: number | null
@@ -289,18 +493,23 @@ export default function ProductsTable() {
       return "-";
     }
 
+
     return `${value.toLocaleString(
       "vi-VN",
       {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2,
+        minimumFractionDigits:
+          0,
+
+        maximumFractionDigits:
+          2,
       }
     )}%`;
   }
 
-  // =========================
+
+  // ====================================================
   // STATUS
-  // =========================
+  // ====================================================
 
   function getStatusLabel(
     status: ProductStatus
@@ -326,13 +535,22 @@ export default function ProductsTable() {
     }
   }
 
-  // =========================
+
+  // ====================================================
   // SEARCH
-  // =========================
+  // ====================================================
 
   function handleSearchChange(
-    event: ChangeEvent<HTMLInputElement>
+    event:
+      ChangeEvent<HTMLInputElement>
   ) {
+    /*
+     * Không debounce.
+     *
+     * Gõ đến đâu search
+     * tự chạy đến đó.
+     */
+
     setSearch(
       event.target.value
     );
@@ -340,12 +558,63 @@ export default function ProductsTable() {
     setPage(1);
   }
 
-  // =========================
+
+  // ====================================================
+  // USER FILTER
+  // ====================================================
+
+  function handleUserFilterChange(
+    event:
+      ChangeEvent<HTMLSelectElement>
+  ) {
+    setUserFilter(
+      event.target.value
+    );
+
+    setPage(1);
+  }
+
+
+  // ====================================================
+  // STATUS FILTER
+  // ====================================================
+
+  function handleStatusFilterChange(
+    event:
+      ChangeEvent<HTMLSelectElement>
+  ) {
+    setStatusFilter(
+      event.target.value
+    );
+
+    setPage(1);
+  }
+
+
+  // ====================================================
+  // SORT
+  // ====================================================
+
+  function handleSortChange(
+    event:
+      ChangeEvent<HTMLSelectElement>
+  ) {
+    setSort(
+      event.target
+        .value as SortOption
+    );
+
+    setPage(1);
+  }
+
+
+  // ====================================================
   // PAGE SIZE
-  // =========================
+  // ====================================================
 
   function handlePageSizeChange(
-    event: ChangeEvent<HTMLSelectElement>
+    event:
+      ChangeEvent<HTMLSelectElement>
   ) {
     setPageSize(
       Number(
@@ -356,9 +625,10 @@ export default function ProductsTable() {
     setPage(1);
   }
 
-  // =========================
+
+  // ====================================================
   // RENDER
-  // =========================
+  // ====================================================
 
   return (
     <section>
@@ -366,7 +636,74 @@ export default function ProductsTable() {
         Danh sách sản phẩm
       </h2>
 
-      {/* SEARCH */}
+
+      {/* ===============================================
+          DASHBOARD STATS
+      ================================================ */}
+
+      <div
+        style={{
+          display: "grid",
+
+          gridTemplateColumns:
+            "repeat(auto-fit, minmax(180px, 1fr))",
+
+          gap: "12px",
+
+          marginBottom:
+            "20px",
+        }}
+      >
+        <div>
+          <strong>
+            Tổng sản phẩm
+          </strong>
+
+          <div>
+            {stats.totalProducts}
+          </div>
+        </div>
+
+
+        <div>
+          <strong>
+            Cảnh báo
+          </strong>
+
+          <div>
+            {stats.warningProducts}
+          </div>
+        </div>
+
+
+        <div>
+          <strong>
+            Báo lại
+          </strong>
+
+          <div>
+            {stats.reminderProducts}
+          </div>
+        </div>
+
+
+        <div>
+          <strong>
+            Sản phẩm đã thêm trong ngày
+          </strong>
+
+          <div>
+            {
+              stats.addedTodayProducts
+            }
+          </div>
+        </div>
+      </div>
+
+
+      {/* ===============================================
+          SEARCH
+      ================================================ */}
 
       <div>
         <label htmlFor="product-search">
@@ -376,7 +713,7 @@ export default function ProductsTable() {
         <input
           id="product-search"
           type="search"
-          placeholder="Nhập mã SP hoặc tên sản phẩm..."
+          placeholder="Mã SP, tên SP, note hoặc ghi chú..."
           value={search}
           onChange={
             handleSearchChange
@@ -384,27 +721,185 @@ export default function ProductsTable() {
         />
       </div>
 
+
       <br />
 
-      {/* TOTAL */}
+
+      {/* ===============================================
+          FILTERS
+      ================================================ */}
+
+      <div
+        style={{
+          display: "flex",
+
+          flexWrap: "wrap",
+
+          gap: "12px",
+        }}
+      >
+        {/* USER */}
+
+        {filterUsers.length >
+          1 && (
+          <div>
+            <label htmlFor="product-user-filter">
+              Người dùng:{" "}
+            </label>
+
+            <select
+              id="product-user-filter"
+              value={userFilter}
+              onChange={
+                handleUserFilterChange
+              }
+              disabled={loading}
+            >
+              <option value="">
+                Tất cả
+              </option>
+
+              {filterUsers.map(
+                (user) => (
+                  <option
+                    key={
+                      user.id
+                    }
+                    value={
+                      user.id
+                    }
+                  >
+                    {user.display_name ||
+                      user.username}
+                  </option>
+                )
+              )}
+            </select>
+          </div>
+        )}
+
+
+        {/* STATUS */}
+
+        <div>
+          <label htmlFor="product-status-filter">
+            Trạng thái:{" "}
+          </label>
+
+          <select
+            id="product-status-filter"
+            value={statusFilter}
+            onChange={
+              handleStatusFilterChange
+            }
+            disabled={loading}
+          >
+            <option value="">
+              Tất cả
+            </option>
+
+            <option value="BINH_THUONG">
+              Bình thường
+            </option>
+
+            <option value="CANH_BAO">
+              Cảnh báo
+            </option>
+
+            <option value="BAO_LAI">
+              Báo lại
+            </option>
+
+            <option value="DA_BAO">
+              Đã báo
+            </option>
+
+            <option value="LOI">
+              Lỗi
+            </option>
+          </select>
+        </div>
+
+
+        {/* SORT */}
+
+        <div>
+          <label htmlFor="product-sort">
+            Sắp xếp:{" "}
+          </label>
+
+          <select
+            id="product-sort"
+            value={sort}
+            onChange={
+              handleSortChange
+            }
+            disabled={loading}
+          >
+            <option value="NEWEST">
+              Mới nhất
+            </option>
+
+            <option value="TEN_ASC">
+              Tên A → Z
+            </option>
+
+            <option value="TEN_DESC">
+              Tên Z → A
+            </option>
+
+            <option value="PERCENT_ASC">
+              % HSD thấp → cao
+            </option>
+
+            <option value="PERCENT_DESC">
+              % HSD cao → thấp
+            </option>
+
+            <option value="HSD_ASC">
+              HSD gần → xa
+            </option>
+
+            <option value="HSD_DESC">
+              HSD xa → gần
+            </option>
+          </select>
+        </div>
+      </div>
+
+
+      <br />
+
+
+      {/* ===============================================
+          FILTERED TOTAL
+      ================================================ */}
 
       <p>
-        Tổng sản phẩm:{" "}
+        Kết quả:{" "}
+
         <strong>
           {total}
-        </strong>
+        </strong>{" "}
+
+        sản phẩm
       </p>
+
 
       {search.trim() && (
         <p>
-          Kết quả tìm kiếm cho:{" "}
+          Tìm kiếm:{" "}
+
           <strong>
             {search}
           </strong>
         </p>
       )}
 
-      {/* ERROR */}
+
+      {/* ===============================================
+          ERROR
+      ================================================ */}
 
       {error && (
         <p>
@@ -414,7 +909,10 @@ export default function ProductsTable() {
         </p>
       )}
 
-      {/* LOADING */}
+
+      {/* ===============================================
+          LOADING
+      ================================================ */}
 
       {loading && (
         <p>
@@ -422,18 +920,24 @@ export default function ProductsTable() {
         </p>
       )}
 
-      {/* TABLE */}
+
+      {/* ===============================================
+          TABLE
+      ================================================ */}
 
       {!error && (
         <div
           style={{
-            overflowX: "auto",
+            overflowX:
+              "auto",
           }}
         >
           <table>
             <thead>
               <tr>
-                <th>Mã SP</th>
+                <th>
+                  Mã SP
+                </th>
 
                 <th>
                   Tên sản phẩm
@@ -443,13 +947,21 @@ export default function ProductsTable() {
                   Người dùng
                 </th>
 
-                <th>NSX</th>
+                <th>
+                  NSX
+                </th>
 
-                <th>HSD</th>
+                <th>
+                  HSD
+                </th>
 
-                <th>% HSD</th>
+                <th>
+                  % HSD
+                </th>
 
-                <th>Ngưỡng</th>
+                <th>
+                  Ngưỡng
+                </th>
 
                 <th>
                   Ngày báo lại
@@ -473,6 +985,7 @@ export default function ProductsTable() {
               </tr>
             </thead>
 
+
             <tbody>
               {!loading &&
               products.length ===
@@ -494,15 +1007,19 @@ export default function ProductsTable() {
                     >
                       <td>
                         {
-                          product.product_code
+                          product
+                            .product_code
                         }
                       </td>
 
+
                       <td>
                         {
-                          product.product_name
+                          product
+                            .product_name
                         }
                       </td>
+
 
                       <td>
                         {product
@@ -514,35 +1031,46 @@ export default function ProductsTable() {
                           "-"}
                       </td>
 
-                      <td>
-                        {formatDate(
-                          product.manufacture_date
-                        )}
-                      </td>
 
                       <td>
                         {formatDate(
-                          product.expiry_date
+                          product
+                            .manufacture_date
                         )}
                       </td>
+
+
+                      <td>
+                        {formatDate(
+                          product
+                            .expiry_date
+                        )}
+                      </td>
+
 
                       <td>
                         {formatPercent(
-                          product.percent_remaining
+                          product
+                            .percent_remaining
                         )}
                       </td>
+
 
                       <td>
                         {formatPercent(
-                          product.threshold_percent
+                          product
+                            .threshold_percent
                         )}
                       </td>
 
+
                       <td>
                         {formatDate(
-                          product.reminder_date
+                          product
+                            .reminder_date
                         )}
                       </td>
+
 
                       <td>
                         <strong>
@@ -552,17 +1080,22 @@ export default function ProductsTable() {
                         </strong>
                       </td>
 
+
                       <td>
                         {
-                          product.quantity
+                          product
+                            .quantity
                         }
                       </td>
 
+
                       <td>
                         {formatPrice(
-                          product.sale_price
+                          product
+                            .sale_price
                         )}
                       </td>
+
 
                       <td>
                         <ProductActions
@@ -583,13 +1116,17 @@ export default function ProductsTable() {
         </div>
       )}
 
+
       <br />
 
-      {/* PAGINATION */}
+
+      {/* ===============================================
+          PAGINATION
+      ================================================ */}
 
       <div>
         <label htmlFor="page-size">
-          Hiển thị:{" "}
+          Số dòng/trang:{" "}
         </label>
 
         <select
@@ -600,14 +1137,6 @@ export default function ProductsTable() {
           }
           disabled={loading}
         >
-          <option value={10}>
-            10
-          </option>
-
-          <option value={20}>
-            20
-          </option>
-
           <option value={30}>
             30
           </option>
@@ -619,12 +1148,15 @@ export default function ProductsTable() {
           <option value={100}>
             100
           </option>
+
+          <option value={200}>
+            200
+          </option>
         </select>
 
-        <span>
-          {" "}
-          dòng / trang{" "}
-        </span>
+
+        {" "}
+
 
         <button
           type="button"
@@ -633,7 +1165,8 @@ export default function ProductsTable() {
               (current) =>
                 Math.max(
                   1,
-                  current - 1
+                  current -
+                    1
                 )
             )
           }
@@ -646,17 +1179,25 @@ export default function ProductsTable() {
           Trang trước
         </button>
 
+
         <span>
           {" "}
+
           Trang{" "}
+
           <strong>
             {page}
-          </strong>{" "}
-          /{" "}
+          </strong>
+
+          {" / "}
+
           <strong>
             {totalPages}
-          </strong>{" "}
+          </strong>
+
+          {" "}
         </span>
+
 
         <button
           type="button"
@@ -665,14 +1206,16 @@ export default function ProductsTable() {
               (current) =>
                 Math.min(
                   totalPages,
-                  current + 1
+                  current +
+                    1
                 )
             )
           }
           disabled={
             loading ||
             totalPages === 0 ||
-            page >= totalPages
+            page >=
+              totalPages
           }
         >
           Trang sau

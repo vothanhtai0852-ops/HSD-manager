@@ -70,18 +70,23 @@ function normalizeOptionalText(
 
 export async function GET(request: Request) {
   try {
-    // =========================
+    // ==================================================
     // SESSION
-    // =========================
+    // ==================================================
 
-    const cookieStore = await cookies();
+    const cookieStore =
+      await cookies();
+
     const token =
-      cookieStore.get("hsd_session")?.value;
+      cookieStore.get(
+        "hsd_session"
+      )?.value;
 
     if (!token) {
       return NextResponse.json(
         {
-          error: "Chưa đăng nhập.",
+          error:
+            "Chưa đăng nhập.",
         },
         {
           status: 401,
@@ -89,8 +94,11 @@ export async function GET(request: Request) {
       );
     }
 
+
     const session =
-      await verifySessionToken(token);
+      await verifySessionToken(
+        token
+      );
 
     if (!session) {
       return NextResponse.json(
@@ -104,25 +112,32 @@ export async function GET(request: Request) {
       );
     }
 
-    // =========================
+
+    // ==================================================
     // CURRENT USER
-    // =========================
+    // ==================================================
 
     const {
       data: currentUser,
       error: userError,
-    } = await supabaseServer
-      .from("users")
-      .select(
-        `
-          id,
-          username,
-          role,
-          active
-        `
-      )
-      .eq("id", session.userId)
-      .maybeSingle();
+    } =
+      await supabaseServer
+        .from("users")
+        .select(
+          `
+            id,
+            username,
+            display_name,
+            role,
+            active
+          `
+        )
+        .eq(
+          "id",
+          session.userId
+        )
+        .maybeSingle();
+
 
     if (userError) {
       console.error(
@@ -141,6 +156,7 @@ export async function GET(request: Request) {
       );
     }
 
+
     if (
       !currentUser ||
       !currentUser.active
@@ -156,34 +172,55 @@ export async function GET(request: Request) {
       );
     }
 
-    // =========================
+
+    // ==================================================
     // QUERY PARAMS
-    // =========================
+    // ==================================================
 
-    const { searchParams } =
-      new URL(request.url);
+    const {
+      searchParams,
+    } =
+      new URL(
+        request.url
+      );
 
-    const requestedPage = Number(
-      searchParams.get("page") || "1"
-    );
+
+    /*
+     * PAGE
+     */
+
+    const requestedPage =
+      Number(
+        searchParams.get(
+          "page"
+        ) || "1"
+      );
 
     const page =
-      Number.isInteger(requestedPage) &&
+      Number.isInteger(
+        requestedPage
+      ) &&
       requestedPage > 0
         ? requestedPage
         : 1;
 
-    const requestedPageSize = Number(
-      searchParams.get("pageSize") ||
-        "30"
-    );
+
+    /*
+     * PAGE SIZE
+     */
+
+    const requestedPageSize =
+      Number(
+        searchParams.get(
+          "pageSize"
+        ) || "30"
+      );
 
     const allowedPageSizes = [
-      10,
-      20,
       30,
       50,
       100,
+      200,
     ];
 
     const pageSize =
@@ -193,92 +230,165 @@ export async function GET(request: Request) {
         ? requestedPageSize
         : 30;
 
-    const search = (
-      searchParams.get("search") || ""
-    ).trim();
 
-    const from =
-      (page - 1) * pageSize;
+    /*
+     * SEARCH
+     */
 
-    const to =
-      from + pageSize - 1;
+    const search =
+      (
+        searchParams.get(
+          "search"
+        ) || ""
+      ).trim();
 
-    // =========================
-    // PRODUCTS QUERY
-    // =========================
 
-    let query = supabaseServer
-      .from("products")
-      .select(
-        `
-          id,
-          user_id,
+    /*
+     * USER FILTER
+     */
 
-          owner:users!products_user_id_fkey (
-            username,
-            display_name
-          ),
+    const requestedUserId =
+      (
+        searchParams.get(
+          "userId"
+        ) || ""
+      ).trim();
 
-          product_code,
-          product_name,
-          manufacture_date,
-          expiry_date,
-          quantity,
-          reminder_date,
-          note,
-          description,
-          sale_price,
-          last_alert_at,
-          alert_sent,
-          last_user_action,
-          created_at,
-          updated_at
-        `,
-        {
-          count: "exact",
-        }
+
+    /*
+     * STATUS FILTER
+     */
+
+    const requestedStatus =
+      (
+        searchParams.get(
+          "status"
+        ) || ""
+      ).trim();
+
+
+    /*
+     * SORT
+     */
+
+    const requestedSort =
+      (
+        searchParams.get(
+          "sort"
+        ) || "NEWEST"
+      ).trim();
+
+
+    const allowedStatuses = [
+      "BINH_THUONG",
+      "CANH_BAO",
+      "BAO_LAI",
+      "DA_BAO",
+      "LOI",
+    ];
+
+
+    const allowedSorts = [
+      "NEWEST",
+      "TEN_ASC",
+      "TEN_DESC",
+      "PERCENT_ASC",
+      "PERCENT_DESC",
+      "HSD_ASC",
+      "HSD_DESC",
+    ];
+
+
+    const statusFilter =
+      allowedStatuses.includes(
+        requestedStatus
       )
-      .order("created_at", {
-        ascending: false,
-      })
-      .range(from, to);
+        ? requestedStatus
+        : "";
 
-    // =========================
-    // SEARCH
-    // =========================
 
-    if (search) {
-      const safeSearch = search
-        .replace(/[%_]/g, "")
-        .replace(/[,()]/g, "")
-        .trim();
+    const sort =
+      allowedSorts.includes(
+        requestedSort
+      )
+        ? requestedSort
+        : "NEWEST";
 
-      if (safeSearch) {
-        query = query.or(
-          [
-            `product_code.ilike.%${safeSearch}%`,
-            `product_name.ilike.%${safeSearch}%`,
-          ].join(",")
-        );
-      }
-    }
 
-    // =========================
-    // USER PERMISSION
-    // =========================
+    // ==================================================
+    // USER SCOPE
+    // ==================================================
+
+    type FilterUser = {
+      id: string;
+      username: string;
+      display_name: string | null;
+      role: string;
+      active: boolean;
+    };
+
+
+    let filterUsers:
+      FilterUser[] = [];
+
+
+    /*
+     * null = ADMIN xem toàn bộ
+     */
+
+    let allowedUserIds:
+      string[] | null = null;
+
+
+    /*
+     * Dùng riêng cho card:
+     * "Sản phẩm đã thêm trong ngày"
+     *
+     * MANAGER chỉ tính nhân viên mình quản lý,
+     * không tính sản phẩm của chính manager.
+     */
+
+    let managerEmployeeIds:
+      string[] = [];
+
+
+    // ==================================================
+    // USER
+    // ==================================================
 
     if (
-      currentUser.role === "USER"
+      currentUser.role ===
+      "USER"
     ) {
-      query = query.eq(
-        "user_id",
-        currentUser.id
-      );
+      filterUsers = [
+        {
+          id:
+            currentUser.id,
+
+          username:
+            currentUser.username,
+
+          display_name:
+            currentUser.display_name,
+
+          role:
+            currentUser.role,
+
+          active:
+            currentUser.active,
+        },
+      ];
+
+
+      allowedUserIds = [
+        currentUser.id,
+      ];
     }
 
-    // =========================
-    // MANAGER PERMISSION
-    // =========================
+
+    // ==================================================
+    // MANAGER
+    // ==================================================
 
     if (
       currentUser.role ===
@@ -287,15 +397,37 @@ export async function GET(request: Request) {
       const {
         data: employees,
         error: employeesError,
-      } = await supabaseServer
-        .from("users")
-        .select("id")
-        .eq(
-          "parent_id",
-          currentUser.id
-        )
-        .eq("role", "USER")
-        .eq("active", true);
+      } =
+        await supabaseServer
+          .from("users")
+          .select(
+            `
+              id,
+              username,
+              display_name,
+              role,
+              active
+            `
+          )
+          .eq(
+            "parent_id",
+            currentUser.id
+          )
+          .eq(
+            "role",
+            "USER"
+          )
+          .eq(
+            "active",
+            true
+          )
+          .order(
+            "username",
+            {
+              ascending: true,
+            }
+          );
+
 
       if (employeesError) {
         console.error(
@@ -314,66 +446,169 @@ export async function GET(request: Request) {
         );
       }
 
-      const allowedUserIds = [
-        currentUser.id,
-        ...(employees ?? []).map(
+
+      managerEmployeeIds =
+        (
+          employees ??
+          []
+        ).map(
           (employee) =>
             employee.id
-        ),
+        );
+
+
+      /*
+       * Danh sách sản phẩm:
+       * manager vẫn thấy bản thân + nhân viên.
+       */
+
+      allowedUserIds = [
+        currentUser.id,
+        ...managerEmployeeIds,
       ];
 
-      query = query.in(
-        "user_id",
-        allowedUserIds
-      );
-    }
 
-    // ADMIN:
-    // Không filter user_id.
-
-    // =========================
-    // RUN QUERY
-    // =========================
-
-    const {
-      data: products,
-      error: productsError,
-      count,
-    } = await query;
-
-    if (productsError) {
-      console.error(
-        "PRODUCTS_DATABASE_ERROR:",
-        productsError
-      );
-
-      return NextResponse.json(
+      filterUsers = [
         {
-          error:
-            "Không thể tải danh sách sản phẩm.",
+          id:
+            currentUser.id,
+
+          username:
+            currentUser.username,
+
+          display_name:
+            currentUser.display_name,
+
+          role:
+            currentUser.role,
+
+          active:
+            currentUser.active,
         },
-        {
-          status: 500,
-        }
-      );
+
+        ...(
+          employees ??
+          []
+        ),
+      ];
     }
 
-    // =========================
+
+    // ==================================================
+    // ADMIN
+    // ==================================================
+
+    if (
+      currentUser.role ===
+      "ADMIN"
+    ) {
+      const {
+        data: users,
+        error: usersError,
+      } =
+        await supabaseServer
+          .from("users")
+          .select(
+            `
+              id,
+              username,
+              display_name,
+              role,
+              active
+            `
+          )
+          .eq(
+            "active",
+            true
+          )
+          .order(
+            "username",
+            {
+              ascending: true,
+            }
+          );
+
+
+      if (usersError) {
+        console.error(
+          "PRODUCTS_FILTER_USERS_ERROR:",
+          usersError
+        );
+
+        return NextResponse.json(
+          {
+            error:
+              "Không thể tải danh sách người dùng.",
+          },
+          {
+            status: 500,
+          }
+        );
+      }
+
+
+      filterUsers =
+        users ?? [];
+
+
+      /*
+       * ADMIN không giới hạn user_id.
+       */
+
+      allowedUserIds = null;
+    }
+
+
+    // ==================================================
+    // VALIDATE USER FILTER
+    // ==================================================
+
+    if (requestedUserId) {
+      const canAccess =
+        filterUsers.some(
+          (user) =>
+            user.id ===
+            requestedUserId
+        );
+
+
+      if (!canAccess) {
+        return NextResponse.json(
+          {
+            error:
+              "Bạn không có quyền xem sản phẩm của tài khoản này.",
+          },
+          {
+            status: 403,
+          }
+        );
+      }
+    }
+
+
+    // ==================================================
     // ALERT CONFIG
-    // =========================
+    // ==================================================
 
     const {
       data: alertConfigs,
       error: alertConfigsError,
-    } = await supabaseServer
-      .from("alert_configs")
-      .select(
-        `
-          user_id,
-          threshold_percent
-        `
-      )
-      .eq("active", true);
+    } =
+      await supabaseServer
+        .from(
+          "alert_configs"
+        )
+        .select(
+          `
+            user_id,
+            threshold_percent
+          `
+        )
+        .eq(
+          "active",
+          true
+        );
+
 
     if (alertConfigsError) {
       console.error(
@@ -392,11 +627,14 @@ export async function GET(request: Request) {
       );
     }
 
+
     const defaultConfig =
       alertConfigs?.find(
         (config) =>
-          config.user_id === null
+          config.user_id ===
+          null
       );
+
 
     const defaultThreshold =
       Number(
@@ -404,8 +642,13 @@ export async function GET(request: Request) {
           ?.threshold_percent
       ) || 31;
 
+
     const thresholdByUser =
-      new Map<string, number>();
+      new Map<
+        string,
+        number
+      >();
+
 
     for (
       const config of
@@ -415,42 +658,191 @@ export async function GET(request: Request) {
         continue;
       }
 
+
       thresholdByUser.set(
         config.user_id,
         Number(
-          config.threshold_percent
+          config
+            .threshold_percent
         )
       );
     }
 
-    // =========================
-    // STATUS
-    // =========================
+
+    // ==================================================
+    // LOAD ALL PRODUCTS IN CURRENT USER SCOPE
+    // ==================================================
+    //
+    // Load theo batch 1000 để tránh giới hạn mặc định.
+    //
+    // Sau đó mới:
+    // - tính trạng thái
+    // - thống kê
+    // - filter
+    // - sort
+    // - pagination
+    //
+    // Với dữ liệu hiện tại khoảng 1.4k sản phẩm thì ổn.
+    // ==================================================
+
+    const allProducts:
+      any[] = [];
+
+
+    const batchSize =
+      1000;
+
+
+    for (
+      let offset = 0;
+      ;
+      offset += batchSize
+    ) {
+      let query =
+        supabaseServer
+          .from("products")
+          .select(
+            `
+              id,
+              user_id,
+
+              owner:users!products_user_id_fkey (
+                username,
+                display_name
+              ),
+
+              product_code,
+              product_name,
+
+              manufacture_date,
+              expiry_date,
+              quantity,
+              reminder_date,
+
+              note,
+              description,
+
+              sale_price,
+
+              last_alert_at,
+              alert_sent,
+              last_user_action,
+
+              created_at,
+              updated_at
+            `
+          )
+          .order(
+            "created_at",
+            {
+              ascending: false,
+            }
+          )
+          .range(
+            offset,
+            offset +
+              batchSize -
+              1
+          );
+
+
+      /*
+       * USER / MANAGER
+       */
+
+      if (
+        allowedUserIds !== null
+      ) {
+        query =
+          query.in(
+            "user_id",
+            allowedUserIds
+          );
+      }
+
+
+      const {
+        data,
+        error: productsError,
+      } =
+        await query;
+
+
+      if (productsError) {
+        console.error(
+          "PRODUCTS_DATABASE_ERROR:",
+          productsError
+        );
+
+        return NextResponse.json(
+          {
+            error:
+              "Không thể tải danh sách sản phẩm.",
+          },
+          {
+            status: 500,
+          }
+        );
+      }
+
+
+      const rows =
+        data ?? [];
+
+
+      allProducts.push(
+        ...rows
+      );
+
+
+      /*
+       * Batch cuối.
+       */
+
+      if (
+        rows.length <
+        batchSize
+      ) {
+        break;
+      }
+    }
+
+
+    // ==================================================
+    // CALCULATE STATUS
+    // ==================================================
 
     const productsWithStatus =
-      (products ?? []).map(
+      allProducts.map(
         (product) => {
           const thresholdPercent =
             thresholdByUser.get(
               product.user_id
-            ) ?? defaultThreshold;
+            ) ??
+            defaultThreshold;
+
 
           const result =
             getProductStatus({
               manufactureDate:
-                product.manufacture_date,
+                product
+                  .manufacture_date,
 
               expiryDate:
-                product.expiry_date,
+                product
+                  .expiry_date,
 
               reminderDate:
-                product.reminder_date,
+                product
+                  .reminder_date,
 
               alertSent:
-                product.alert_sent,
+                product
+                  .alert_sent,
 
               thresholdPercent,
             });
+
 
           return {
             ...product,
@@ -459,7 +851,8 @@ export async function GET(request: Request) {
               thresholdPercent,
 
             percent_remaining:
-              result.percentRemaining,
+              result
+                .percentRemaining,
 
             status:
               result.status,
@@ -467,39 +860,553 @@ export async function GET(request: Request) {
         }
       );
 
-    const total = count ?? 0;
+
+    // ==================================================
+    // DASHBOARD STATISTICS
+    // ==================================================
+    //
+    // Stats KHÔNG phụ thuộc:
+    //
+    // - search
+    // - user filter
+    // - status filter
+    // - sort
+    //
+    // ==================================================
+
+    const totalProducts =
+      productsWithStatus.length;
+
+
+    const warningProducts =
+      productsWithStatus.filter(
+        (product) =>
+          product.status ===
+          "CANH_BAO"
+      ).length;
+
+
+    const reminderProducts =
+      productsWithStatus.filter(
+        (product) =>
+          product.status ===
+          "BAO_LAI"
+      ).length;
+
+
+    // ==================================================
+    // PRODUCTS ADDED TODAY
+    // ==================================================
+
+    const vietnamToday =
+      getVietnamToday();
+
+
+    const todayStart =
+      new Date(
+        `${vietnamToday}T00:00:00+07:00`
+      );
+
+
+    const tomorrowStart =
+      new Date(
+        todayStart.getTime() +
+          24 *
+            60 *
+            60 *
+            1000
+      );
+
+
+    const todayStartTime =
+      todayStart.getTime();
+
+
+    const tomorrowStartTime =
+      tomorrowStart.getTime();
+
+
+    const addedTodayProducts =
+      productsWithStatus.filter(
+        (product) => {
+          if (
+            !product.created_at
+          ) {
+            return false;
+          }
+
+
+          const createdTime =
+            new Date(
+              product.created_at
+            ).getTime();
+
+
+          if (
+            !Number.isFinite(
+              createdTime
+            )
+          ) {
+            return false;
+          }
+
+
+          if (
+            createdTime <
+              todayStartTime ||
+            createdTime >=
+              tomorrowStartTime
+          ) {
+            return false;
+          }
+
+
+          /*
+           * ADMIN:
+           * toàn bộ sản phẩm
+           * được thêm hôm nay.
+           */
+
+          if (
+            currentUser.role ===
+            "ADMIN"
+          ) {
+            return true;
+          }
+
+
+          /*
+           * USER:
+           * sản phẩm của chính user.
+           */
+
+          if (
+            currentUser.role ===
+            "USER"
+          ) {
+            return (
+              product.user_id ===
+              currentUser.id
+            );
+          }
+
+
+          /*
+           * MANAGER:
+           * chỉ tính sản phẩm
+           * của nhân viên đang quản lý.
+           *
+           * Không tính sản phẩm
+           * của chính manager.
+           */
+
+          if (
+            currentUser.role ===
+            "MANAGER"
+          ) {
+            return (
+              managerEmployeeIds.includes(
+                product.user_id
+              )
+            );
+          }
+
+
+          return false;
+        }
+      ).length;
+
+
+    // ==================================================
+    // FILTER
+    // ==================================================
+
+    let filteredProducts =
+      [
+        ...productsWithStatus,
+      ];
+
+
+    // ==================================================
+    // USER FILTER
+    // ==================================================
+
+    if (requestedUserId) {
+      filteredProducts =
+        filteredProducts.filter(
+          (product) =>
+            product.user_id ===
+            requestedUserId
+        );
+    }
+
+
+    // ==================================================
+    // STATUS FILTER
+    // ==================================================
+
+    if (statusFilter) {
+      filteredProducts =
+        filteredProducts.filter(
+          (product) =>
+            product.status ===
+            statusFilter
+        );
+    }
+
+
+    // ==================================================
+    // SEARCH
+    // ==================================================
+    //
+    // Tìm ngay khi user gõ.
+    //
+    // Search:
+    // - Mã SP
+    // - Tên SP
+    // - Note
+    // - Ghi chú
+    //
+    // ==================================================
+
+    if (search) {
+      const normalizedSearch =
+        search.toLocaleLowerCase(
+          "vi"
+        );
+
+
+      filteredProducts =
+        filteredProducts.filter(
+          (product) => {
+            const values = [
+              product.product_code,
+              product.product_name,
+              product.note,
+              product.description,
+            ];
+
+
+            return values.some(
+              (value) =>
+                typeof value ===
+                  "string" &&
+                value
+                  .toLocaleLowerCase(
+                    "vi"
+                  )
+                  .includes(
+                    normalizedSearch
+                  )
+            );
+          }
+        );
+    }
+
+
+    // ==================================================
+    // SORT HELPERS
+    // ==================================================
+
+    function compareNullableNumber(
+      a: number | null,
+      b: number | null,
+      ascending: boolean
+    ) {
+      if (
+        a === null &&
+        b === null
+      ) {
+        return 0;
+      }
+
+
+      if (a === null) {
+        return 1;
+      }
+
+
+      if (b === null) {
+        return -1;
+      }
+
+
+      return ascending
+        ? a - b
+        : b - a;
+    }
+
+
+    function compareNullableDate(
+      a: string | null,
+      b: string | null,
+      ascending: boolean
+    ) {
+      if (
+        !a &&
+        !b
+      ) {
+        return 0;
+      }
+
+
+      if (!a) {
+        return 1;
+      }
+
+
+      if (!b) {
+        return -1;
+      }
+
+
+      return ascending
+        ? a.localeCompare(b)
+        : b.localeCompare(a);
+    }
+
+
+    // ==================================================
+    // SORT
+    // ==================================================
+
+    filteredProducts.sort(
+      (a, b) => {
+        switch (sort) {
+          // ----------------------------------------------
+          // TÊN A -> Z
+          // ----------------------------------------------
+
+          case "TEN_ASC":
+            return (
+              a.product_name ??
+              ""
+            ).localeCompare(
+              b.product_name ??
+                "",
+              "vi",
+              {
+                sensitivity:
+                  "base",
+              }
+            );
+
+
+          // ----------------------------------------------
+          // TÊN Z -> A
+          // ----------------------------------------------
+
+          case "TEN_DESC":
+            return (
+              b.product_name ??
+              ""
+            ).localeCompare(
+              a.product_name ??
+                "",
+              "vi",
+              {
+                sensitivity:
+                  "base",
+              }
+            );
+
+
+          // ----------------------------------------------
+          // % HSD THẤP -> CAO
+          // ----------------------------------------------
+
+          case "PERCENT_ASC":
+            return compareNullableNumber(
+              a.percent_remaining,
+              b.percent_remaining,
+              true
+            );
+
+
+          // ----------------------------------------------
+          // % HSD CAO -> THẤP
+          // ----------------------------------------------
+
+          case "PERCENT_DESC":
+            return compareNullableNumber(
+              a.percent_remaining,
+              b.percent_remaining,
+              false
+            );
+
+
+          // ----------------------------------------------
+          // HSD GẦN -> XA
+          // ----------------------------------------------
+
+          case "HSD_ASC":
+            return compareNullableDate(
+              a.expiry_date,
+              b.expiry_date,
+              true
+            );
+
+
+          // ----------------------------------------------
+          // HSD XA -> GẦN
+          // ----------------------------------------------
+
+          case "HSD_DESC":
+            return compareNullableDate(
+              a.expiry_date,
+              b.expiry_date,
+              false
+            );
+
+
+          // ----------------------------------------------
+          // MỚI NHẤT
+          // ----------------------------------------------
+
+          case "NEWEST":
+          default:
+            return (
+              new Date(
+                b.created_at
+              ).getTime() -
+              new Date(
+                a.created_at
+              ).getTime()
+            );
+        }
+      }
+    );
+
+
+    // ==================================================
+    // PAGINATION
+    // ==================================================
+
+    const total =
+      filteredProducts.length;
+
+
+    const totalPages =
+      total === 0
+        ? 0
+        : Math.ceil(
+            total /
+              pageSize
+          );
+
+
+    /*
+     * Nếu filter làm số trang
+     * giảm xuống thì ép về
+     * trang hợp lệ gần nhất.
+     */
+
+    const safePage =
+      totalPages === 0
+        ? 1
+        : Math.min(
+            page,
+            totalPages
+          );
+
+
+    const from =
+      (
+        safePage -
+        1
+      ) *
+      pageSize;
+
+
+    const products =
+      filteredProducts.slice(
+        from,
+        from +
+          pageSize
+      );
+
+
+    // ==================================================
+    // RESPONSE
+    // ==================================================
 
     return NextResponse.json({
       success: true,
 
+
       user: {
-        id: currentUser.id,
+        id:
+          currentUser.id,
+
         username:
           currentUser.username,
-        role: currentUser.role,
+
+        role:
+          currentUser.role,
       },
+
+
+      /*
+       * Dashboard cards
+       */
+
+      stats: {
+        totalProducts,
+        warningProducts,
+        reminderProducts,
+        addedTodayProducts,
+      },
+
+
+      /*
+       * User dropdown
+       */
+
+      filterUsers:
+        filterUsers.map(
+          (user) => ({
+            id:
+              user.id,
+
+            username:
+              user.username,
+
+            display_name:
+              user.display_name,
+
+            role:
+              user.role,
+
+            active:
+              user.active,
+          })
+        ),
+
+
+      /*
+       * Pagination
+       */
 
       pagination: {
-        page,
+        page:
+          safePage,
+
         pageSize,
+
         total,
 
-        totalPages:
-          total === 0
-            ? 0
-            : Math.ceil(
-                total / pageSize
-              ),
+        totalPages,
       },
 
-      products:
-        productsWithStatus,
+
+      products,
     });
   } catch (error) {
     console.error(
       "PRODUCTS_ERROR:",
       error
     );
+
 
     return NextResponse.json(
       {
