@@ -9,10 +9,12 @@ import {
 
 import UserActions from "./UserActions";
 
+
 type UserRole =
   | "ADMIN"
   | "MANAGER"
   | "USER";
+
 
 type UserEmail = {
   id: string;
@@ -21,10 +23,12 @@ type UserEmail = {
   isPrimary: boolean;
 };
 
+
 type ParentUser = {
   username: string;
   display_name: string | null;
 };
+
 
 type UserItem = {
   id: string;
@@ -40,21 +44,21 @@ type UserItem = {
   updatedAt: string;
 };
 
+
 type CurrentUser = {
   id: string;
   username: string;
   role: UserRole;
 };
 
+
 type UsersResponse = {
   success: boolean;
-
   currentUser: CurrentUser;
-
   canCreateUsers: boolean;
-
   users: UserItem[];
 };
+
 
 export default function UserManagement() {
   // ====================================================
@@ -76,6 +80,7 @@ export default function UserManagement() {
     setCanCreateUsers,
   ] = useState(false);
 
+
   // ====================================================
   // UI
   // ====================================================
@@ -88,6 +93,7 @@ export default function UserManagement() {
 
   const [success, setSuccess] =
     useState("");
+
 
   // ====================================================
   // CREATE USER FORM
@@ -122,6 +128,7 @@ export default function UserManagement() {
     creating,
     setCreating,
   ] = useState(false);
+
 
   // ====================================================
   // LOAD USERS
@@ -191,9 +198,11 @@ export default function UserManagement() {
       }
     }, []);
 
+
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
+
 
   // ====================================================
   // ACTIVE MANAGERS
@@ -217,6 +226,7 @@ export default function UserManagement() {
         displayName:
           manager.displayName,
       }));
+
 
   // ====================================================
   // PRIMARY EMAIL
@@ -246,6 +256,7 @@ export default function UserManagement() {
       firstActive?.email ?? "-"
     );
   }
+
 
   // ====================================================
   // CREATE USER
@@ -361,204 +372,420 @@ export default function UserManagement() {
     }
   }
 
+
   // ====================================================
   // RENDER
   // ====================================================
 
   return (
-    <section>
-      <h2>
-        Quản lý tài khoản
-      </h2>
+    <div>
+      {/* STATUS */}
 
-      {currentUser && (
-        <p>
-          Quyền hiện tại:{" "}
-          <strong>
-            {currentUser.role}
-          </strong>
-        </p>
-      )}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent:
+            "space-between",
+          gap: "12px",
+          flexWrap: "wrap",
+          marginBottom: "16px",
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: "13px",
+              color:
+                "var(--text-secondary)",
+            }}
+          >
+            Quản trị người dùng
+          </div>
+
+          {currentUser && (
+            <div
+              style={{
+                marginTop: "3px",
+                fontWeight: 800,
+              }}
+            >
+              Quyền hiện tại:{" "}
+              <span
+                style={{
+                  color:
+                    "var(--kk-red)",
+                }}
+              >
+                {currentUser.role}
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div
+          style={{
+            padding:
+              "6px 10px",
+            borderRadius:
+              "999px",
+            background:
+              "var(--kk-red-soft)",
+            color:
+              "var(--kk-red)",
+            fontWeight: 800,
+            fontSize: "12px",
+          }}
+        >
+          {users.length} TÀI KHOẢN
+        </div>
+      </div>
+
+
+      {/* MESSAGES */}
 
       {loading && (
-        <p>
+        <div
+          style={{
+            marginBottom: "14px",
+            color:
+              "var(--text-secondary)",
+          }}
+        >
           Đang tải tài khoản...
-        </p>
+        </div>
       )}
+
 
       {error && (
-        <p>
-          <strong>
-            {error}
-          </strong>
-        </p>
+        <div
+          style={{
+            marginBottom: "14px",
+            padding:
+              "10px 12px",
+            border:
+              "1px solid #f1b5b5",
+            borderRadius:
+              "8px",
+            background:
+              "var(--danger-soft)",
+            color:
+              "var(--danger)",
+            fontWeight: 700,
+          }}
+        >
+          {error}
+        </div>
       )}
+
 
       {success && (
-        <p>
-          <strong>
-            {success}
-          </strong>
-        </p>
+        <div
+          style={{
+            marginBottom: "14px",
+            padding:
+              "10px 12px",
+            border:
+              "1px solid #acd7ba",
+            borderRadius:
+              "8px",
+            background:
+              "var(--success-soft)",
+            color:
+              "var(--success)",
+            fontWeight: 700,
+          }}
+        >
+          {success}
+        </div>
       )}
 
-      {/* ============================================= */}
-      {/* CREATE USER */}
-      {/* ============================================= */}
+
+      {/* =================================================
+          CREATE USER
+      ================================================= */}
 
       {canCreateUsers && (
-        <>
-          <h3>
-            Thêm tài khoản
-          </h3>
+        <section
+          style={{
+            marginBottom: "20px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent:
+                "space-between",
+              gap: "12px",
+              flexWrap: "wrap",
+              marginBottom: "18px",
+            }}
+          >
+            <div>
+              <h2
+                style={{
+                  margin:
+                    "0 0 4px",
+                  fontSize:
+                    "20px",
+                }}
+              >
+                Thêm tài khoản
+              </h2>
+
+              <p
+                style={{
+                  margin: 0,
+                  color:
+                    "var(--text-secondary)",
+                }}
+              >
+                Tạo tài khoản mới và
+                phân quyền ngay khi
+                thêm.
+              </p>
+            </div>
+          </div>
+
 
           <form
             onSubmit={
               handleCreateUser
             }
           >
-            <div>
-              <label htmlFor="new-username">
-                Username
-              </label>
+            {/* ROW 1 */}
 
-              <br />
+            <div
+              style={{
+                display: "grid",
 
-              <input
-                id="new-username"
-                type="text"
-                value={username}
-                onChange={(event) =>
-                  setUsername(
-                    event.target.value
-                  )
-                }
-                disabled={creating}
-              />
-            </div>
+                gridTemplateColumns:
+                  "repeat(4, minmax(180px, 1fr))",
 
-            <br />
+                gap: "14px",
+              }}
+            >
+              <div>
+                <label
+                  htmlFor="new-username"
+                  style={{
+                    display:
+                      "block",
+                    marginBottom:
+                      "6px",
+                    fontWeight:
+                      700,
+                  }}
+                >
+                  Username
+                </label>
 
-            <div>
-              <label htmlFor="new-display-name">
-                Tên hiển thị
-              </label>
-
-              <br />
-
-              <input
-                id="new-display-name"
-                type="text"
-                value={displayName}
-                onChange={(event) =>
-                  setDisplayName(
-                    event.target.value
-                  )
-                }
-                disabled={creating}
-              />
-            </div>
-
-            <br />
-
-            <div>
-              <label htmlFor="new-email">
-                Email
-              </label>
-
-              <br />
-
-              <input
-                id="new-email"
-                type="email"
-                value={email}
-                onChange={(event) =>
-                  setEmail(
-                    event.target.value
-                  )
-                }
-                disabled={creating}
-              />
-            </div>
-
-            <br />
-
-            <div>
-              <label htmlFor="new-password">
-                Mật khẩu ban đầu
-              </label>
-
-              <br />
-
-              <input
-                id="new-password"
-                type="password"
-                value={password}
-                onChange={(event) =>
-                  setPassword(
-                    event.target.value
-                  )
-                }
-                minLength={8}
-                autoComplete="new-password"
-                disabled={creating}
-              />
-            </div>
-
-            <br />
-
-            <div>
-              <label htmlFor="new-role">
-                Role
-              </label>
-
-              <br />
-
-              <select
-                id="new-role"
-                value={role}
-                onChange={(event) => {
-                  const nextRole =
-                    event.target
-                      .value as UserRole;
-
-                  setRole(nextRole);
-
-                  if (
-                    nextRole !==
-                    "USER"
-                  ) {
-                    setParentUsername(
-                      ""
-                    );
+                <input
+                  id="new-username"
+                  type="text"
+                  value={username}
+                  onChange={(event) =>
+                    setUsername(
+                      event.target.value
+                    )
                   }
-                }}
-                disabled={creating}
-              >
-                <option value="USER">
-                  USER
-                </option>
+                  disabled={creating}
+                  autoComplete="off"
+                  style={{
+                    width: "100%",
+                  }}
+                />
+              </div>
 
-                <option value="MANAGER">
-                  MANAGER
-                </option>
 
-                <option value="ADMIN">
-                  ADMIN
-                </option>
-              </select>
+              <div>
+                <label
+                  htmlFor="new-display-name"
+                  style={{
+                    display:
+                      "block",
+                    marginBottom:
+                      "6px",
+                    fontWeight:
+                      700,
+                  }}
+                >
+                  Tên hiển thị
+                </label>
+
+                <input
+                  id="new-display-name"
+                  type="text"
+                  value={
+                    displayName
+                  }
+                  onChange={(event) =>
+                    setDisplayName(
+                      event.target.value
+                    )
+                  }
+                  disabled={creating}
+                  style={{
+                    width: "100%",
+                  }}
+                />
+              </div>
+
+
+              <div>
+                <label
+                  htmlFor="new-email"
+                  style={{
+                    display:
+                      "block",
+                    marginBottom:
+                      "6px",
+                    fontWeight:
+                      700,
+                  }}
+                >
+                  Email
+                </label>
+
+                <input
+                  id="new-email"
+                  type="email"
+                  value={email}
+                  onChange={(event) =>
+                    setEmail(
+                      event.target.value
+                    )
+                  }
+                  disabled={creating}
+                  autoComplete="off"
+                  style={{
+                    width: "100%",
+                  }}
+                />
+              </div>
+
+
+              <div>
+                <label
+                  htmlFor="new-password"
+                  style={{
+                    display:
+                      "block",
+                    marginBottom:
+                      "6px",
+                    fontWeight:
+                      700,
+                  }}
+                >
+                  Mật khẩu ban đầu
+                </label>
+
+                <input
+                  id="new-password"
+                  type="password"
+                  value={password}
+                  onChange={(event) =>
+                    setPassword(
+                      event.target.value
+                    )
+                  }
+                  minLength={8}
+                  autoComplete="new-password"
+                  disabled={creating}
+                  style={{
+                    width: "100%",
+                  }}
+                />
+              </div>
             </div>
 
-            <br />
 
-            {role === "USER" && (
-              <>
+            {/* ROW 2 */}
+
+            <div
+              style={{
+                display: "grid",
+
+                gridTemplateColumns:
+                  role === "USER"
+                    ? "minmax(150px, 0.7fr) minmax(240px, 1.2fr) minmax(140px, 0.6fr) auto"
+                    : "minmax(150px, 0.7fr) minmax(140px, 0.6fr) auto",
+
+                gap: "14px",
+                alignItems: "end",
+                marginTop: "14px",
+              }}
+            >
+              <div>
+                <label
+                  htmlFor="new-role"
+                  style={{
+                    display:
+                      "block",
+                    marginBottom:
+                      "6px",
+                    fontWeight:
+                      700,
+                  }}
+                >
+                  Role
+                </label>
+
+                <select
+                  id="new-role"
+                  value={role}
+                  onChange={(event) => {
+                    const nextRole =
+                      event.target
+                        .value as UserRole;
+
+                    setRole(nextRole);
+
+                    if (
+                      nextRole !==
+                      "USER"
+                    ) {
+                      setParentUsername(
+                        ""
+                      );
+                    }
+                  }}
+                  disabled={creating}
+                  style={{
+                    width: "100%",
+                  }}
+                >
+                  <option value="USER">
+                    USER
+                  </option>
+
+                  <option value="MANAGER">
+                    MANAGER
+                  </option>
+
+                  <option value="ADMIN">
+                    ADMIN
+                  </option>
+                </select>
+              </div>
+
+
+              {role === "USER" && (
                 <div>
-                  <label htmlFor="new-parent">
+                  <label
+                    htmlFor="new-parent"
+                    style={{
+                      display:
+                        "block",
+                      marginBottom:
+                        "6px",
+                      fontWeight:
+                        700,
+                    }}
+                  >
                     Manager
                   </label>
-
-                  <br />
 
                   <select
                     id="new-parent"
@@ -576,6 +803,9 @@ export default function UserManagement() {
                     disabled={
                       creating
                     }
+                    style={{
+                      width: "100%",
+                    }}
                   >
                     <option value="">
                       Không gán Manager
@@ -599,194 +829,388 @@ export default function UserManagement() {
                     )}
                   </select>
                 </div>
+              )}
 
-                <br />
-              </>
-            )}
 
-            <div>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={active}
-                  onChange={(
-                    event
-                  ) =>
-                    setActive(
-                      event.target
-                        .checked
-                    )
-                  }
-                  disabled={
-                    creating
-                  }
-                />
+              <div
+                style={{
+                  minHeight: "40px",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <label
+                  style={{
+                    display:
+                      "inline-flex",
+                    alignItems:
+                      "center",
+                    gap: "8px",
+                    fontWeight:
+                      700,
+                    cursor:
+                      "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={active}
+                    onChange={(
+                      event
+                    ) =>
+                      setActive(
+                        event.target
+                          .checked
+                      )
+                    }
+                    disabled={
+                      creating
+                    }
+                  />
 
-                {" "}
-                Active
-              </label>
+                  Active
+                </label>
+              </div>
+
+
+              <button
+                type="submit"
+                className="kk-button-primary"
+                disabled={creating}
+                style={{
+                  minHeight:
+                    "40px",
+                  minWidth:
+                    "150px",
+                  whiteSpace:
+                    "nowrap",
+                }}
+              >
+                {creating
+                  ? "Đang tạo..."
+                  : "Tạo tài khoản"}
+              </button>
             </div>
-
-            <br />
-
-            <button
-              type="submit"
-              disabled={creating}
-            >
-              {creating
-                ? "Đang tạo..."
-                : "Tạo tài khoản"}
-            </button>
           </form>
-
-          <hr />
-        </>
+        </section>
       )}
 
-      {/* ============================================= */}
-      {/* USERS TABLE */}
-      {/* ============================================= */}
 
-      <h3>
-        Danh sách tài khoản
-      </h3>
+      {/* =================================================
+          USERS TABLE
+      ================================================= */}
 
-      <p>
-        Tổng tài khoản:{" "}
-        <strong>
-          {users.length}
-        </strong>
-      </p>
+      <section>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent:
+              "space-between",
+            gap: "12px",
+            flexWrap: "wrap",
+            marginBottom: "14px",
+          }}
+        >
+          <div>
+            <h2
+              style={{
+                margin:
+                  "0 0 4px",
+                fontSize:
+                  "20px",
+              }}
+            >
+              Danh sách tài khoản
+            </h2>
 
-      <div
-        style={{
-          overflowX: "auto",
-        }}
-      >
-        <table>
-          <thead>
-            <tr>
-              <th>
-                Username
-              </th>
+            <p
+              style={{
+                margin: 0,
+                color:
+                  "var(--text-secondary)",
+              }}
+            >
+              Tổng tài khoản:{" "}
+              <strong>
+                {users.length}
+              </strong>
+            </p>
+          </div>
+        </div>
 
-              <th>
-                Tên hiển thị
-              </th>
 
-              <th>
-                Email
-              </th>
-
-              <th>
-                Role
-              </th>
-
-              <th>
-                Manager
-              </th>
-
-              <th>
-                Active
-              </th>
-
-              <th>
-                Auth
-              </th>
-
-              <th>
-                Thao tác
-              </th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {!loading &&
-            users.length === 0 ? (
+        <div
+          style={{
+            overflowX: "auto",
+            width: "100%",
+          }}
+        >
+          <table
+            style={{
+              minWidth:
+                "1100px",
+            }}
+          >
+            <thead>
               <tr>
-                <td colSpan={8}>
-                  Không có tài khoản.
-                </td>
+                <th
+                  style={{
+                    textAlign:
+                      "left",
+                    minWidth:
+                      "130px",
+                  }}
+                >
+                  Username
+                </th>
+
+                <th
+                  style={{
+                    textAlign:
+                      "left",
+                    minWidth:
+                      "170px",
+                  }}
+                >
+                  Tên hiển thị
+                </th>
+
+                <th
+                  style={{
+                    textAlign:
+                      "left",
+                    minWidth:
+                      "240px",
+                  }}
+                >
+                  Email
+                </th>
+
+                <th
+                  style={{
+                    minWidth:
+                      "100px",
+                  }}
+                >
+                  Role
+                </th>
+
+                <th
+                  style={{
+                    textAlign:
+                      "left",
+                    minWidth:
+                      "150px",
+                  }}
+                >
+                  Manager
+                </th>
+
+                <th
+                  style={{
+                    minWidth:
+                      "130px",
+                  }}
+                >
+                  Active
+                </th>
+
+                <th
+                  style={{
+                    minWidth:
+                      "100px",
+                  }}
+                >
+                  Auth
+                </th>
+
+                <th
+                  style={{
+                    minWidth:
+                      "220px",
+                  }}
+                >
+                  Thao tác
+                </th>
               </tr>
-            ) : (
-              users.map(
-                (user) => (
-                  <tr
-                    key={
-                      user.id
-                    }
+            </thead>
+
+
+            <tbody>
+              {!loading &&
+              users.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={8}
+                    style={{
+                      textAlign:
+                        "center",
+                      padding:
+                        "24px",
+                      color:
+                        "var(--text-secondary)",
+                    }}
                   >
-                    <td>
-                      {
-                        user.username
-                      }
-                    </td>
-
-                    <td>
-                      {user.displayName ||
-                        "-"}
-                    </td>
-
-                    <td>
-                      {getPrimaryEmail(
-                        user
-                      )}
-                    </td>
-
-                    <td>
-                      <strong>
+                    Không có tài khoản.
+                  </td>
+                </tr>
+              ) : (
+                users.map(
+                  (user) => (
+                    <tr
+                      key={user.id}
+                    >
+                      <td
+                        style={{
+                          fontWeight:
+                            800,
+                        }}
+                      >
                         {
-                          user.role
+                          user.username
                         }
-                      </strong>
-                    </td>
+                      </td>
 
-                    <td>
-                      {user.parent
-                        ? user.parent
-                            .display_name ||
-                          user.parent
-                            .username
-                        : "-"}
-                    </td>
 
-                    <td>
-                      {user.active
-                        ? "Đang hoạt động"
-                        : "Đã khóa"}
-                    </td>
+                      <td>
+                        {user.displayName ||
+                          "-"}
+                      </td>
 
-                    <td>
-                      {
-                        user.authMode
-                      }
-                    </td>
 
-                    <td>
-                      {currentUser && (
-                        <UserActions
-                          user={
-                            user
+                      <td
+                        style={{
+                          minWidth:
+                            "240px",
+                          overflowWrap:
+                            "anywhere",
+                        }}
+                      >
+                        {getPrimaryEmail(
+                          user
+                        )}
+                      </td>
+
+
+                      <td
+                        style={{
+                          textAlign:
+                            "center",
+                        }}
+                      >
+                        <span
+                          style={{
+                            display:
+                              "inline-flex",
+
+                            padding:
+                              "4px 8px",
+
+                            borderRadius:
+                              "999px",
+
+                            fontSize:
+                              "12px",
+
+                            fontWeight:
+                              800,
+
+                            background:
+                              user.role ===
+                              "ADMIN"
+                                ? "var(--kk-red-soft)"
+                                : user.role ===
+                                  "MANAGER"
+                                ? "var(--info-soft)"
+                                : "var(--surface-soft)",
+
+                            color:
+                              user.role ===
+                              "ADMIN"
+                                ? "var(--kk-red)"
+                                : user.role ===
+                                  "MANAGER"
+                                ? "var(--info)"
+                                : "var(--foreground)",
+                          }}
+                        >
+                          {user.role}
+                        </span>
+                      </td>
+
+
+                      <td>
+                        {user.parent
+                          ? user.parent
+                              .display_name ||
+                            user.parent
+                              .username
+                          : "-"}
+                      </td>
+
+
+                      <td
+                        style={{
+                          textAlign:
+                            "center",
+                        }}
+                      >
+                        <span
+                          className={
+                            user.active
+                              ? "kk-badge kk-badge-normal"
+                              : "kk-badge kk-badge-error"
                           }
-                          currentUser={
-                            currentUser
-                          }
-                          managers={
-                            managers
-                          }
-                          onChanged={
-                            loadUsers
-                          }
-                        />
-                      )}
-                    </td>
-                  </tr>
+                        >
+                          {user.active
+                            ? "Đang hoạt động"
+                            : "Đã khóa"}
+                        </span>
+                      </td>
+
+
+                      <td
+                        style={{
+                          textAlign:
+                            "center",
+                        }}
+                      >
+                        {
+                          user.authMode
+                        }
+                      </td>
+
+
+                      <td
+                        style={{
+                          whiteSpace:
+                            "nowrap",
+                        }}
+                      >
+                        {currentUser && (
+                          <UserActions
+                            user={user}
+                            currentUser={
+                              currentUser
+                            }
+                            managers={
+                              managers
+                            }
+                            onChanged={
+                              loadUsers
+                            }
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  )
                 )
-              )
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
   );
 }
