@@ -49,6 +49,7 @@ type Product = {
 
   threshold_percent: number;
   percent_remaining: number | null;
+
   status: ProductStatus;
 
   owner: {
@@ -117,10 +118,12 @@ export default function ProductsTable() {
     setProducts,
   ] = useState<Product[]>([]);
 
+
   const [
     filterUsers,
     setFilterUsers,
   ] = useState<FilterUser[]>([]);
+
 
   const [
     stats,
@@ -129,6 +132,7 @@ export default function ProductsTable() {
     useState<DashboardStats>(
       EMPTY_STATS
     );
+
 
   const [
     total,
@@ -145,10 +149,12 @@ export default function ProductsTable() {
     setPage,
   ] = useState(1);
 
+
   const [
     pageSize,
     setPageSize,
   ] = useState(30);
+
 
   const [
     totalPages,
@@ -167,13 +173,14 @@ export default function ProductsTable() {
 
 
   // ====================================================
-  // FILTERS
+  // FILTER
   // ====================================================
 
   const [
     userFilter,
     setUserFilter,
   ] = useState("");
+
 
   const [
     statusFilter,
@@ -212,6 +219,7 @@ export default function ProductsTable() {
     loading,
     setLoading,
   ] = useState(true);
+
 
   const [
     error,
@@ -339,12 +347,6 @@ export default function ProductsTable() {
         );
 
 
-        /*
-         * Nếu API ép page về
-         * trang hợp lệ sau khi
-         * filter/delete.
-         */
-
         if (
           result.pagination.page !==
           page
@@ -370,11 +372,15 @@ export default function ProductsTable() {
 
 
         setProducts([]);
+
         setFilterUsers([]);
+
         setStats(
           EMPTY_STATS
         );
+
         setTotal(0);
+
         setTotalPages(0);
 
 
@@ -413,7 +419,7 @@ export default function ProductsTable() {
 
 
   // ====================================================
-  // REFRESH TABLE
+  // REFRESH
   // ====================================================
 
   function refreshProducts() {
@@ -508,7 +514,7 @@ export default function ProductsTable() {
 
 
   // ====================================================
-  // STATUS
+  // STATUS LABEL
   // ====================================================
 
   function getStatusLabel(
@@ -546,9 +552,7 @@ export default function ProductsTable() {
   ) {
     /*
      * Không debounce.
-     *
-     * Gõ đến đâu search
-     * tự chạy đến đó.
+     * Gõ tới đâu tìm tới đó.
      */
 
     setSearch(
@@ -637,18 +641,20 @@ export default function ProductsTable() {
       </h2>
 
 
-      {/* ===============================================
+      {/* =================================================
           DASHBOARD STATS
-      ================================================ */}
+      ================================================== */}
 
       <div
         style={{
-          display: "grid",
+          display:
+            "grid",
 
           gridTemplateColumns:
             "repeat(auto-fit, minmax(180px, 1fr))",
 
-          gap: "12px",
+          gap:
+            "12px",
 
           marginBottom:
             "20px",
@@ -701,9 +707,9 @@ export default function ProductsTable() {
       </div>
 
 
-      {/* ===============================================
+      {/* =================================================
           SEARCH
-      ================================================ */}
+      ================================================== */}
 
       <div>
         <label htmlFor="product-search">
@@ -725,20 +731,23 @@ export default function ProductsTable() {
       <br />
 
 
-      {/* ===============================================
+      {/* =================================================
           FILTERS
-      ================================================ */}
+      ================================================== */}
 
       <div
         style={{
-          display: "flex",
+          display:
+            "flex",
 
-          flexWrap: "wrap",
+          flexWrap:
+            "wrap",
 
-          gap: "12px",
+          gap:
+            "12px",
         }}
       >
-        {/* USER */}
+        {/* USER FILTER */}
 
         {filterUsers.length >
           1 && (
@@ -749,11 +758,15 @@ export default function ProductsTable() {
 
             <select
               id="product-user-filter"
-              value={userFilter}
+              value={
+                userFilter
+              }
               onChange={
                 handleUserFilterChange
               }
-              disabled={loading}
+              disabled={
+                loading
+              }
             >
               <option value="">
                 Tất cả
@@ -779,7 +792,7 @@ export default function ProductsTable() {
         )}
 
 
-        {/* STATUS */}
+        {/* STATUS FILTER */}
 
         <div>
           <label htmlFor="product-status-filter">
@@ -788,11 +801,15 @@ export default function ProductsTable() {
 
           <select
             id="product-status-filter"
-            value={statusFilter}
+            value={
+              statusFilter
+            }
             onChange={
               handleStatusFilterChange
             }
-            disabled={loading}
+            disabled={
+              loading
+            }
           >
             <option value="">
               Tất cả
@@ -830,11 +847,15 @@ export default function ProductsTable() {
 
           <select
             id="product-sort"
-            value={sort}
+            value={
+              sort
+            }
             onChange={
               handleSortChange
             }
-            disabled={loading}
+            disabled={
+              loading
+            }
           >
             <option value="NEWEST">
               Mới nhất
@@ -871,9 +892,9 @@ export default function ProductsTable() {
       <br />
 
 
-      {/* ===============================================
-          FILTERED TOTAL
-      ================================================ */}
+      {/* =================================================
+          RESULT COUNT
+      ================================================== */}
 
       <p>
         Kết quả:{" "}
@@ -897,9 +918,9 @@ export default function ProductsTable() {
       )}
 
 
-      {/* ===============================================
+      {/* =================================================
           ERROR
-      ================================================ */}
+      ================================================== */}
 
       {error && (
         <p>
@@ -910,9 +931,9 @@ export default function ProductsTable() {
       )}
 
 
-      {/* ===============================================
+      {/* =================================================
           LOADING
-      ================================================ */}
+      ================================================== */}
 
       {loading && (
         <p>
@@ -921,65 +942,186 @@ export default function ProductsTable() {
       )}
 
 
-      {/* ===============================================
+      {/* =================================================
           TABLE
-      ================================================ */}
+      ================================================== */}
 
       {!error && (
         <div
           style={{
             overflowX:
               "auto",
+
+            width:
+              "100%",
           }}
         >
-          <table>
+          <table
+            cellPadding={8}
+            style={{
+              width:
+                "100%",
+
+              minWidth:
+                "1500px",
+
+              borderCollapse:
+                "collapse",
+            }}
+          >
             <thead>
               <tr>
-                <th>
+                <th
+                  style={{
+                    textAlign:
+                      "left",
+
+                    minWidth:
+                      "130px",
+                  }}
+                >
                   Mã SP
                 </th>
 
-                <th>
+
+                <th
+                  style={{
+                    textAlign:
+                      "left",
+
+                    minWidth:
+                      "260px",
+                  }}
+                >
                   Tên sản phẩm
                 </th>
 
-                <th>
+
+                <th
+                  style={{
+                    textAlign:
+                      "left",
+
+                    minWidth:
+                      "110px",
+                  }}
+                >
                   Người dùng
                 </th>
 
-                <th>
+
+                <th
+                  style={{
+                    minWidth:
+                      "100px",
+                  }}
+                >
                   NSX
                 </th>
 
-                <th>
+
+                <th
+                  style={{
+                    minWidth:
+                      "100px",
+                  }}
+                >
                   HSD
                 </th>
 
-                <th>
+
+                <th
+                  style={{
+                    minWidth:
+                      "85px",
+                  }}
+                >
                   % HSD
                 </th>
 
-                <th>
+
+                <th
+                  style={{
+                    minWidth:
+                      "80px",
+                  }}
+                >
                   Ngưỡng
                 </th>
 
-                <th>
+
+                <th
+                  style={{
+                    minWidth:
+                      "110px",
+                  }}
+                >
                   Ngày báo lại
                 </th>
 
-                <th>
+
+                <th
+                  style={{
+                    minWidth:
+                      "110px",
+                  }}
+                >
                   Trạng thái
                 </th>
 
-                <th>
+
+                <th
+                  style={{
+                    minWidth:
+                      "80px",
+                  }}
+                >
                   Số lượng
                 </th>
 
-                <th>
+
+                <th
+                  style={{
+                    minWidth:
+                      "100px",
+                  }}
+                >
                   Giá bán
                 </th>
 
-                <th>
+
+                <th
+                  style={{
+                    textAlign:
+                      "left",
+
+                    minWidth:
+                      "160px",
+                  }}
+                >
+                  Note
+                </th>
+
+
+                <th
+                  style={{
+                    textAlign:
+                      "left",
+
+                    minWidth:
+                      "180px",
+                  }}
+                >
+                  Ghi chú
+                </th>
+
+
+                <th
+                  style={{
+                    minWidth:
+                      "120px",
+                  }}
+                >
                   Thao tác
                 </th>
               </tr>
@@ -992,7 +1134,14 @@ export default function ProductsTable() {
                 0 ? (
                 <tr>
                   <td
-                    colSpan={12}
+                    colSpan={14}
+                    style={{
+                      textAlign:
+                        "center",
+
+                      padding:
+                        "24px",
+                    }}
                   >
                     Không tìm thấy sản phẩm.
                   </td>
@@ -1005,6 +1154,8 @@ export default function ProductsTable() {
                         product.id
                       }
                     >
+                      {/* MÃ SP */}
+
                       <td>
                         {
                           product
@@ -1013,6 +1164,8 @@ export default function ProductsTable() {
                       </td>
 
 
+                      {/* TÊN SP */}
+
                       <td>
                         {
                           product
@@ -1020,6 +1173,8 @@ export default function ProductsTable() {
                         }
                       </td>
 
+
+                      {/* USER */}
 
                       <td>
                         {product
@@ -1032,7 +1187,14 @@ export default function ProductsTable() {
                       </td>
 
 
-                      <td>
+                      {/* NSX */}
+
+                      <td
+                        style={{
+                          whiteSpace:
+                            "nowrap",
+                        }}
+                      >
                         {formatDate(
                           product
                             .manufacture_date
@@ -1040,7 +1202,14 @@ export default function ProductsTable() {
                       </td>
 
 
-                      <td>
+                      {/* HSD */}
+
+                      <td
+                        style={{
+                          whiteSpace:
+                            "nowrap",
+                        }}
+                      >
                         {formatDate(
                           product
                             .expiry_date
@@ -1048,7 +1217,17 @@ export default function ProductsTable() {
                       </td>
 
 
-                      <td>
+                      {/* % HSD */}
+
+                      <td
+                        style={{
+                          whiteSpace:
+                            "nowrap",
+
+                          textAlign:
+                            "center",
+                        }}
+                      >
                         {formatPercent(
                           product
                             .percent_remaining
@@ -1056,7 +1235,17 @@ export default function ProductsTable() {
                       </td>
 
 
-                      <td>
+                      {/* NGƯỠNG */}
+
+                      <td
+                        style={{
+                          whiteSpace:
+                            "nowrap",
+
+                          textAlign:
+                            "center",
+                        }}
+                      >
                         {formatPercent(
                           product
                             .threshold_percent
@@ -1064,13 +1253,22 @@ export default function ProductsTable() {
                       </td>
 
 
-                      <td>
+                      {/* NGÀY BÁO LẠI */}
+
+                      <td
+                        style={{
+                          whiteSpace:
+                            "nowrap",
+                        }}
+                      >
                         {formatDate(
                           product
                             .reminder_date
                         )}
                       </td>
 
+
+                      {/* TRẠNG THÁI */}
 
                       <td>
                         <strong>
@@ -1081,7 +1279,14 @@ export default function ProductsTable() {
                       </td>
 
 
-                      <td>
+                      {/* SỐ LƯỢNG */}
+
+                      <td
+                        style={{
+                          textAlign:
+                            "center",
+                        }}
+                      >
                         {
                           product
                             .quantity
@@ -1089,15 +1294,64 @@ export default function ProductsTable() {
                       </td>
 
 
-                      <td>
-                        {formatPrice(
-                          product
-                            .sale_price
-                        )}
+                      {/* GIÁ BÁN */}
+
+                      <td
+  style={{
+    whiteSpace: "nowrap",
+    textAlign: "right",
+    minWidth: "110px",
+    paddingRight: "24px",
+  }}
+>
+  {formatPrice(
+    product.sale_price
+  )}
+</td>
+
+
+                      {/* NOTE */}
+
+                      <td
+  style={{
+    minWidth: "180px",
+    whiteSpace: "normal",
+    overflowWrap: "anywhere",
+    paddingLeft: "24px",
+    paddingRight: "16px",
+  }}
+>
+  {product.note || "-"}
+</td>
+
+
+                      {/* GHI CHÚ */}
+
+                      <td
+                        style={{
+                          minWidth:
+                            "180px",
+
+                          whiteSpace:
+                            "normal",
+
+                          overflowWrap:
+                            "anywhere",
+                        }}
+                      >
+                        {product.description ||
+                          "-"}
                       </td>
 
 
-                      <td>
+                      {/* THAO TÁC */}
+
+                      <td
+                        style={{
+                          whiteSpace:
+                            "nowrap",
+                        }}
+                      >
                         <ProductActions
                           product={
                             product
@@ -1120,9 +1374,9 @@ export default function ProductsTable() {
       <br />
 
 
-      {/* ===============================================
+      {/* =================================================
           PAGINATION
-      ================================================ */}
+      ================================================== */}
 
       <div>
         <label htmlFor="page-size">
@@ -1131,11 +1385,15 @@ export default function ProductsTable() {
 
         <select
           id="page-size"
-          value={pageSize}
+          value={
+            pageSize
+          }
           onChange={
             handlePageSizeChange
           }
-          disabled={loading}
+          disabled={
+            loading
+          }
         >
           <option value={30}>
             30
@@ -1162,7 +1420,9 @@ export default function ProductsTable() {
           type="button"
           onClick={() =>
             setPage(
-              (current) =>
+              (
+                current
+              ) =>
                 Math.max(
                   1,
                   current -
@@ -1173,7 +1433,8 @@ export default function ProductsTable() {
           disabled={
             loading ||
             page <= 1 ||
-            totalPages === 0
+            totalPages ===
+              0
           }
         >
           Trang trước
@@ -1203,7 +1464,9 @@ export default function ProductsTable() {
           type="button"
           onClick={() =>
             setPage(
-              (current) =>
+              (
+                current
+              ) =>
                 Math.min(
                   totalPages,
                   current +
@@ -1213,7 +1476,8 @@ export default function ProductsTable() {
           }
           disabled={
             loading ||
-            totalPages === 0 ||
+            totalPages ===
+              0 ||
             page >=
               totalPages
           }

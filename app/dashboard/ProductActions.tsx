@@ -13,6 +13,7 @@ import {
 
 type Product = {
   id: string;
+
   product_code: string;
   product_name: string;
 
@@ -61,10 +62,19 @@ export default function ProductActions({
   product,
   onChanged,
 }: Props) {
+  // ====================================================
+  // MODAL
+  // ====================================================
+
   const [
     editing,
     setEditing,
   ] = useState(false);
+
+
+  // ====================================================
+  // FORM
+  // ====================================================
 
   const [
     productCode,
@@ -121,6 +131,11 @@ export default function ProductActions({
     product.description ?? ""
   );
 
+
+  // ====================================================
+  // UI
+  // ====================================================
+
   const [
     loading,
     setLoading,
@@ -130,6 +145,69 @@ export default function ProductActions({
     error,
     setError,
   ] = useState("");
+
+
+  // ====================================================
+  // OPEN EDITOR
+  // ====================================================
+
+  function openEditor() {
+    /*
+     * Reset lại theo dữ liệu mới nhất
+     * mỗi lần mở modal.
+     */
+
+    setProductCode(
+      product.product_code
+    );
+
+    setManufactureDate(
+      isoToVietnamDate(
+        product.manufacture_date
+      )
+    );
+
+    setExpiryDate(
+      isoToVietnamDate(
+        product.expiry_date
+      )
+    );
+
+    setReminderDate(
+      isoToVietnamDate(
+        product.reminder_date
+      )
+    );
+
+    setQuantity(
+      String(product.quantity)
+    );
+
+    setNote(
+      product.note ?? ""
+    );
+
+    setDescription(
+      product.description ?? ""
+    );
+
+    setError("");
+    setEditing(true);
+  }
+
+
+  // ====================================================
+  // CLOSE EDITOR
+  // ====================================================
+
+  function closeEditor() {
+    if (loading) {
+      return;
+    }
+
+    setError("");
+    setEditing(false);
+  }
 
 
   // ====================================================
@@ -144,11 +222,9 @@ export default function ProductActions({
     setError("");
 
 
-    /*
-     * ================================================
-     * NSX
-     * ================================================
-     */
+    // ==================================================
+    // NSX
+    // ==================================================
 
     const nsxIso =
       vietnamDateToIso(
@@ -164,11 +240,9 @@ export default function ProductActions({
     }
 
 
-    /*
-     * ================================================
-     * HSD
-     * ================================================
-     */
+    // ==================================================
+    // HSD
+    // ==================================================
 
     const hsdIso =
       vietnamDateToIso(
@@ -184,17 +258,17 @@ export default function ProductActions({
     }
 
 
-    /*
-     * ================================================
-     * NGÀY BÁO LẠI
-     * ================================================
-     */
+    // ==================================================
+    // NGÀY BÁO LẠI
+    // ==================================================
 
     let reminderIso:
       | string
       | null = null;
 
-    if (reminderDate.trim()) {
+    if (
+      reminderDate.trim()
+    ) {
       reminderIso =
         vietnamDateToIso(
           reminderDate
@@ -210,11 +284,9 @@ export default function ProductActions({
     }
 
 
-    /*
-     * ================================================
-     * SỐ LƯỢNG
-     * ================================================
-     */
+    // ==================================================
+    // SỐ LƯỢNG
+    // ==================================================
 
     const quantityNumber =
       Number(quantity);
@@ -233,13 +305,13 @@ export default function ProductActions({
     }
 
 
-    /*
-     * ================================================
-     * MÃ SẢN PHẨM
-     * ================================================
-     */
+    // ==================================================
+    // MÃ SẢN PHẨM
+    // ==================================================
 
-    if (!productCode.trim()) {
+    if (
+      !productCode.trim()
+    ) {
       setError(
         "Mã sản phẩm không được để trống."
       );
@@ -248,11 +320,9 @@ export default function ProductActions({
     }
 
 
-    /*
-     * ================================================
-     * GỬI API UPDATE
-     * ================================================
-     */
+    // ==================================================
+    // GỬI API UPDATE
+    // ==================================================
 
     try {
       setLoading(true);
@@ -268,35 +338,38 @@ export default function ProductActions({
                 "application/json",
             },
 
-            body: JSON.stringify({
-              productCode:
-                productCode.trim(),
+            body:
+              JSON.stringify({
+                productCode:
+                  productCode.trim(),
 
-              manufactureDate:
-                nsxIso,
+                manufactureDate:
+                  nsxIso,
 
-              expiryDate:
-                hsdIso,
+                expiryDate:
+                  hsdIso,
 
-              quantity:
-                quantityNumber,
+                quantity:
+                  quantityNumber,
 
-              reminderDate:
-                reminderIso,
+                reminderDate:
+                  reminderIso,
 
-              note:
-                note.trim() ||
-                null,
+                note:
+                  note.trim() ||
+                  null,
 
-              description:
-                description.trim() ||
-                null,
-            }),
+                description:
+                  description.trim() ||
+                  null,
+              }),
           }
         );
 
+
       const data =
         await response.json();
+
 
       if (!response.ok) {
         throw new Error(
@@ -304,6 +377,7 @@ export default function ProductActions({
             "Không thể cập nhật sản phẩm."
         );
       }
+
 
       setEditing(false);
 
@@ -343,7 +417,8 @@ export default function ProductActions({
         await fetch(
           `/api/products/${product.id}`,
           {
-            method: "DELETE",
+            method:
+              "DELETE",
           }
         );
 
@@ -371,311 +446,552 @@ export default function ProductActions({
 
 
   // ====================================================
-  // NORMAL VIEW
+  // RENDER
   // ====================================================
 
-  if (!editing) {
-    return (
-      <div>
+  return (
+    <>
+      {/* ===============================================
+          BUTTONS TRONG TABLE
+      ================================================ */}
+
+      <div
+        style={{
+          display: "flex",
+          gap: "6px",
+          flexWrap: "nowrap",
+        }}
+      >
         <button
           type="button"
-          onClick={() =>
-            setEditing(true)
+          onClick={
+            openEditor
           }
           disabled={loading}
         >
           Sửa
         </button>
 
-        {" "}
 
         <button
           type="button"
-          onClick={handleDelete}
+          onClick={
+            handleDelete
+          }
           disabled={loading}
         >
           {loading
             ? "Đang xử lý..."
             : "Xóa"}
         </button>
+      </div>
 
-        {error && (
+
+      {!editing &&
+        error && (
           <div>
             <strong>
               {error}
             </strong>
           </div>
         )}
-      </div>
-    );
-  }
 
 
-  // ====================================================
-  // EDIT FORM
-  // ====================================================
+      {/* ===============================================
+          EDIT MODAL
+      ================================================ */}
 
-  return (
-    <div>
-      <form
-        onSubmit={handleUpdate}
-      >
-        {/* =========================================
-            MÃ SẢN PHẨM
-        ========================================== */}
+      {editing && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Sửa sản phẩm"
+          style={{
+            position:
+              "fixed",
 
-        <div>
-          <label>
-            Mã SP
-          </label>
+            inset: 0,
 
-          <br />
+            zIndex:
+              9999,
 
-          <input
-            type="text"
-            value={productCode}
-            onChange={(event) =>
-              setProductCode(
-                event.target.value
-              )
-            }
-            disabled={loading}
-          />
-        </div>
+            display:
+              "flex",
 
+            alignItems:
+              "center",
 
-        <br />
+            justifyContent:
+              "center",
 
+            padding:
+              "20px",
 
-        {/* =========================================
-            NSX
-        ========================================== */}
-
-        <div>
-          <label>
-            NSX
-          </label>
-
-          <br />
-
-          <input
-            type="text"
-            inputMode="numeric"
-            placeholder="DD/MM/YYYY"
-            value={manufactureDate}
-            onChange={(event) =>
-              setManufactureDate(
-                event.target.value
-              )
-            }
-            onBlur={() =>
-              setManufactureDate(
-                normalizeVietnamDateInput(
-                  manufactureDate
-                )
-              )
-            }
-            disabled={loading}
-          />
-        </div>
-
-
-        <br />
-
-
-        {/* =========================================
-            HSD
-        ========================================== */}
-
-        <div>
-          <label>
-            HSD
-          </label>
-
-          <br />
-
-          <input
-            type="text"
-            inputMode="numeric"
-            placeholder="DD/MM/YYYY"
-            value={expiryDate}
-            onChange={(event) =>
-              setExpiryDate(
-                event.target.value
-              )
-            }
-            onBlur={() =>
-              setExpiryDate(
-                normalizeVietnamDateInput(
-                  expiryDate
-                )
-              )
-            }
-            disabled={loading}
-          />
-        </div>
-
-
-        <br />
-
-
-        {/* =========================================
-            SỐ LƯỢNG
-        ========================================== */}
-
-        <div>
-          <label>
-            Số lượng
-          </label>
-
-          <br />
-
-          <input
-            type="number"
-            min="0"
-            step="0.001"
-            value={quantity}
-            onChange={(event) =>
-              setQuantity(
-                event.target.value
-              )
-            }
-            disabled={loading}
-          />
-        </div>
-
-
-        <br />
-
-
-        {/* =========================================
-            NGÀY BÁO LẠI
-        ========================================== */}
-
-        <div>
-          <label>
-            Ngày báo lại
-          </label>
-
-          <br />
-
-          <input
-            type="text"
-            inputMode="numeric"
-            placeholder="DD/MM/YYYY"
-            value={reminderDate}
-            onChange={(event) =>
-              setReminderDate(
-                event.target.value
-              )
-            }
-            onBlur={() =>
-              setReminderDate(
-                normalizeVietnamDateInput(
-                  reminderDate
-                )
-              )
-            }
-            disabled={loading}
-          />
-        </div>
-
-
-        <br />
-
-
-        {/* =========================================
-            NOTE
-        ========================================== */}
-
-        <div>
-          <label>
-            Note
-          </label>
-
-          <br />
-
-          <input
-            type="text"
-            value={note}
-            onChange={(event) =>
-              setNote(
-                event.target.value
-              )
-            }
-            disabled={loading}
-          />
-        </div>
-
-
-        <br />
-
-
-        {/* =========================================
-            GHI CHÚ
-        ========================================== */}
-
-        <div>
-          <label>
-            Ghi chú
-          </label>
-
-          <br />
-
-          <textarea
-            value={description}
-            onChange={(event) =>
-              setDescription(
-                event.target.value
-              )
-            }
-            disabled={loading}
-          />
-        </div>
-
-
-        <br />
-
-
-        {/* =========================================
-            ERROR
-        ========================================== */}
-
-        {error && (
-          <p>
-            <strong>
-              {error}
-            </strong>
-          </p>
-        )}
-
-
-        {/* =========================================
-            ACTIONS
-        ========================================== */}
-
-        <button
-          type="submit"
-          disabled={loading}
-        >
-          {loading
-            ? "Đang lưu..."
-            : "Lưu"}
-        </button>
-
-        {" "}
-
-        <button
-          type="button"
-          disabled={loading}
-          onClick={() => {
-            setError("");
-            setEditing(false);
+            background:
+              "rgba(0, 0, 0, 0.65)",
           }}
         >
-          Hủy
-        </button>
-      </form>
-    </div>
+          <div
+            style={{
+              width:
+                "min(760px, 100%)",
+
+              maxHeight:
+                "90vh",
+
+              overflowY:
+                "auto",
+
+              boxSizing:
+                "border-box",
+
+              padding:
+                "24px",
+
+              border:
+                "1px solid #666",
+
+              borderRadius:
+                "12px",
+
+              background:
+                "Canvas",
+
+              color:
+                "CanvasText",
+
+              boxShadow:
+                "0 20px 60px rgba(0,0,0,0.45)",
+            }}
+          >
+            {/* HEADER */}
+
+            <div
+              style={{
+                display:
+                  "flex",
+
+                justifyContent:
+                  "space-between",
+
+                alignItems:
+                  "flex-start",
+
+                gap:
+                  "16px",
+
+                marginBottom:
+                  "20px",
+              }}
+            >
+              <div>
+                <h2
+                  style={{
+                    margin:
+                      "0 0 6px",
+                  }}
+                >
+                  Sửa sản phẩm
+                </h2>
+
+                <div>
+                  {product.product_name}
+                </div>
+              </div>
+
+
+              <button
+                type="button"
+                onClick={
+                  closeEditor
+                }
+                disabled={
+                  loading
+                }
+                aria-label="Đóng"
+              >
+                ✕
+              </button>
+            </div>
+
+
+            {/* FORM */}
+
+            <form
+              onSubmit={
+                handleUpdate
+              }
+            >
+              <div
+                style={{
+                  display:
+                    "grid",
+
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(220px, 1fr))",
+
+                  gap:
+                    "16px",
+                }}
+              >
+                {/* MÃ SP */}
+
+                <label>
+                  <div>
+                    <strong>
+                      Mã SP
+                    </strong>
+                  </div>
+
+                  <input
+                    type="text"
+                    value={
+                      productCode
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setProductCode(
+                        event
+                          .target
+                          .value
+                      )
+                    }
+                    disabled={
+                      loading
+                    }
+                    style={{
+                      width:
+                        "100%",
+
+                      boxSizing:
+                        "border-box",
+                    }}
+                  />
+                </label>
+
+
+                {/* SỐ LƯỢNG */}
+
+                <label>
+                  <div>
+                    <strong>
+                      Số lượng
+                    </strong>
+                  </div>
+
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    value={
+                      quantity
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setQuantity(
+                        event
+                          .target
+                          .value
+                      )
+                    }
+                    disabled={
+                      loading
+                    }
+                    style={{
+                      width:
+                        "100%",
+
+                      boxSizing:
+                        "border-box",
+                    }}
+                  />
+                </label>
+
+
+                {/* NSX */}
+
+                <label>
+                  <div>
+                    <strong>
+                      NSX
+                    </strong>
+                  </div>
+
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="DD/MM/YYYY"
+                    value={
+                      manufactureDate
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setManufactureDate(
+                        event
+                          .target
+                          .value
+                      )
+                    }
+                    onBlur={() =>
+                      setManufactureDate(
+                        normalizeVietnamDateInput(
+                          manufactureDate
+                        )
+                      )
+                    }
+                    disabled={
+                      loading
+                    }
+                    style={{
+                      width:
+                        "100%",
+
+                      boxSizing:
+                        "border-box",
+                    }}
+                  />
+                </label>
+
+
+                {/* HSD */}
+
+                <label>
+                  <div>
+                    <strong>
+                      HSD
+                    </strong>
+                  </div>
+
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="DD/MM/YYYY"
+                    value={
+                      expiryDate
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setExpiryDate(
+                        event
+                          .target
+                          .value
+                      )
+                    }
+                    onBlur={() =>
+                      setExpiryDate(
+                        normalizeVietnamDateInput(
+                          expiryDate
+                        )
+                      )
+                    }
+                    disabled={
+                      loading
+                    }
+                    style={{
+                      width:
+                        "100%",
+
+                      boxSizing:
+                        "border-box",
+                    }}
+                  />
+                </label>
+
+
+                {/* NGÀY BÁO LẠI */}
+
+                <label>
+                  <div>
+                    <strong>
+                      Ngày báo lại
+                    </strong>
+                  </div>
+
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="DD/MM/YYYY"
+                    value={
+                      reminderDate
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setReminderDate(
+                        event
+                          .target
+                          .value
+                      )
+                    }
+                    onBlur={() =>
+                      setReminderDate(
+                        normalizeVietnamDateInput(
+                          reminderDate
+                        )
+                      )
+                    }
+                    disabled={
+                      loading
+                    }
+                    style={{
+                      width:
+                        "100%",
+
+                      boxSizing:
+                        "border-box",
+                    }}
+                  />
+                </label>
+
+
+                {/* NOTE */}
+
+                <label>
+                  <div>
+                    <strong>
+                      Note
+                    </strong>
+                  </div>
+
+                  <input
+                    type="text"
+                    value={
+                      note
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setNote(
+                        event
+                          .target
+                          .value
+                      )
+                    }
+                    disabled={
+                      loading
+                    }
+                    style={{
+                      width:
+                        "100%",
+
+                      boxSizing:
+                        "border-box",
+                    }}
+                  />
+                </label>
+
+
+                {/* GHI CHÚ */}
+
+                <label
+                  style={{
+                    gridColumn:
+                      "1 / -1",
+                  }}
+                >
+                  <div>
+                    <strong>
+                      Ghi chú
+                    </strong>
+                  </div>
+
+                  <textarea
+                    value={
+                      description
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setDescription(
+                        event
+                          .target
+                          .value
+                      )
+                    }
+                    disabled={
+                      loading
+                    }
+                    rows={4}
+                    style={{
+                      width:
+                        "100%",
+
+                      boxSizing:
+                        "border-box",
+
+                      resize:
+                        "vertical",
+                    }}
+                  />
+                </label>
+              </div>
+
+
+              {/* ERROR */}
+
+              {error && (
+                <div
+                  style={{
+                    marginTop:
+                      "16px",
+                  }}
+                >
+                  <strong>
+                    {error}
+                  </strong>
+                </div>
+              )}
+
+
+              {/* ACTIONS */}
+
+              <div
+                style={{
+                  display:
+                    "flex",
+
+                  justifyContent:
+                    "flex-end",
+
+                  gap:
+                    "10px",
+
+                  marginTop:
+                    "20px",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={
+                    closeEditor
+                  }
+                  disabled={
+                    loading
+                  }
+                >
+                  Hủy
+                </button>
+
+
+                <button
+                  type="submit"
+                  disabled={
+                    loading
+                  }
+                >
+                  {loading
+                    ? "Đang lưu..."
+                    : "Lưu"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
