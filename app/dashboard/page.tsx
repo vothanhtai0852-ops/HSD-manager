@@ -9,37 +9,21 @@ import LogoutButton from "./LogoutButton";
 import ProductsTable from "./ProductsTable";
 import AddProductForm from "./AddProductForm";
 
-
 export default async function DashboardPage() {
-  const cookieStore =
-    await cookies();
-
-  const token =
-    cookieStore.get(
-      "hsd_session"
-    )?.value;
-
+  const cookieStore = await cookies();
+  const token = cookieStore.get("hsd_session")?.value;
 
   if (!token) {
     redirect("/login");
   }
 
-
-  const session =
-    await verifySessionToken(
-      token
-    );
-
+  const session = await verifySessionToken(token);
 
   if (!session) {
     redirect("/login");
   }
 
-
-  const {
-    data: user,
-    error,
-  } = await supabaseServer
+  const { data: user, error } = await supabaseServer
     .from("users")
     .select(
       `
@@ -50,28 +34,15 @@ export default async function DashboardPage() {
         display_name
       `
     )
-    .eq(
-      "id",
-      session.userId
-    )
+    .eq("id", session.userId)
     .maybeSingle();
 
-
-  if (
-    error ||
-    !user ||
-    !user.active
-  ) {
+  if (error || !user || !user.active) {
     redirect("/login");
   }
 
-
   return (
     <main className="kk-page">
-      {/* =================================================
-          HEADER BAR
-      ================================================== */}
-
       <header
         style={{
           marginBottom: "20px",
@@ -80,28 +51,18 @@ export default async function DashboardPage() {
         <div
           style={{
             width: "100%",
-
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-
             gap: "18px",
-
             padding: "16px 18px",
-
             background:
               "linear-gradient(90deg, var(--kk-red) 0%, var(--kk-red-dark) 100%)",
-
             borderRadius: "14px",
-
-            boxShadow:
-              "var(--shadow-md)",
-
+            boxShadow: "var(--shadow-md)",
             flexWrap: "wrap",
           }}
         >
-          {/* LEFT */}
-
           <div
             style={{
               display: "flex",
@@ -111,11 +72,7 @@ export default async function DashboardPage() {
               flex: "1 1 620px",
             }}
           >
-            <div
-              style={{
-                minWidth: 0,
-              }}
-            >
+            <div style={{ minWidth: 0 }}>
               <div
                 style={{
                   display: "flex",
@@ -126,64 +83,36 @@ export default async function DashboardPage() {
               >
                 <div
                   style={{
-                    color:
-                      "var(--kk-yellow)",
-
-                    fontSize:
-                      "24px",
-
-                    fontWeight:
-                      900,
-
-                    letterSpacing:
-                      "0.02em",
-
-                    whiteSpace:
-                      "nowrap",
+                    color: "var(--kk-yellow)",
+                    fontSize: "24px",
+                    fontWeight: 900,
+                    letterSpacing: "0.02em",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   KINGKONG MART
                 </div>
 
-
                 <div
                   style={{
-                    color:
-                      "#ffffff",
-
-                    fontSize:
-                      "21px",
-
-                    fontWeight:
-                      900,
-
-                    letterSpacing:
-                      "0.05em",
-
-                    whiteSpace:
-                      "nowrap",
+                    color: "#ffffff",
+                    fontSize: "21px",
+                    fontWeight: 900,
+                    letterSpacing: "0.05em",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   AUTO CHECK
                 </div>
               </div>
 
-
               <div
                 style={{
                   marginTop: "5px",
-
-                  color:
-                    "rgba(255,255,255,0.95)",
-
-                  fontSize:
-                    "15px",
-
-                  fontWeight:
-                    700,
-
-                  lineHeight:
-                    1.35,
+                  color: "rgba(255,255,255,0.95)",
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  lineHeight: 1.35,
                 }}
               >
                 Luôn đảm bảo HSD sản phẩm được kiểm soát
@@ -191,23 +120,15 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-
-          {/* RIGHT */}
-
           <div
             style={{
               display: "flex",
               alignItems: "center",
               justifyContent: "flex-end",
-
               gap: "14px",
-
               flex: "0 1 auto",
-
               paddingLeft: "18px",
-
-              borderLeft:
-                "1px solid rgba(255,255,255,0.22)",
+              borderLeft: "1px solid rgba(255,255,255,0.22)",
             }}
           >
             <div
@@ -218,44 +139,28 @@ export default async function DashboardPage() {
             >
               <div
                 style={{
-                  color:
-                    "rgba(255,255,255,0.78)",
-
-                  fontSize:
-                    "11px",
-
-                  marginBottom:
-                    "2px",
+                  color: "rgba(255,255,255,0.78)",
+                  fontSize: "11px",
+                  marginBottom: "2px",
                 }}
               >
                 Đang đăng nhập
               </div>
 
-
               <div
                 style={{
-                  color:
-                    "#ffffff",
-
-                  fontWeight:
-                    800,
-
-                  fontSize:
-                    "15px",
+                  color: "#ffffff",
+                  fontWeight: 800,
+                  fontSize: "15px",
                 }}
               >
-                {user.display_name ||
-                  user.username}
+                {user.display_name || user.username}
               </div>
-
 
               <div
                 style={{
-                  color:
-                    "rgba(255,255,255,0.82)",
-
-                  fontSize:
-                    "12px",
+                  color: "rgba(255,255,255,0.82)",
+                  fontSize: "12px",
                 }}
               >
                 {user.username}
@@ -264,109 +169,110 @@ export default async function DashboardPage() {
               </div>
             </div>
 
-
-            <div
-              style={{
-                flexShrink: 0,
-              }}
-            >
+            <div style={{ flexShrink: 0 }}>
               <LogoutButton />
             </div>
           </div>
         </div>
       </header>
 
-
-      {/* =================================================
-          ADD PRODUCT
-      ================================================== */}
-
       <AddProductForm />
 
-
-      {/* =================================================
-          USER MANAGEMENT LINK
-      ================================================== */}
-
       {user.role === "ADMIN" && (
-        <section>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent:
-                "space-between",
+        <>
+          <section>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "16px",
+                flexWrap: "wrap",
+              }}
+            >
+              <div>
+                <h2 style={{ margin: "0 0 4px" }}>
+                  Quản lý tài khoản
+                </h2>
 
-              gap: "16px",
-              flexWrap: "wrap",
-            }}
-          >
-            <div>
-              <h2
+                <p
+                  style={{
+                    margin: 0,
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  Quản lý nhân viên, quyền truy cập, Gmail nhận cảnh báo và mật
+                  khẩu.
+                </p>
+              </div>
+
+              <Link
+                href="/dashboard/users"
                 style={{
-                  margin: "0 0 4px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minHeight: "40px",
+                  padding: "8px 16px",
+                  borderRadius: "8px",
+                  background: "var(--kk-red)",
+                  color: "#ffffff",
+                  fontWeight: 800,
+                  textDecoration: "none",
                 }}
               >
                 Quản lý tài khoản
-              </h2>
-
-              <p
-                style={{
-                  margin: 0,
-                  color:
-                    "var(--text-secondary)",
-                }}
-              >
-                Quản lý nhân viên, quyền truy cập,
-                Gmail nhận cảnh báo và mật khẩu.
-              </p>
+              </Link>
             </div>
+          </section>
 
-
-            <Link
-              href="/dashboard/users"
+          <section>
+            <div
               style={{
-                display:
-                  "inline-flex",
-
-                alignItems:
-                  "center",
-
-                justifyContent:
-                  "center",
-
-                minHeight:
-                  "40px",
-
-                padding:
-                  "8px 16px",
-
-                borderRadius:
-                  "8px",
-
-                background:
-                  "var(--kk-red)",
-
-                color:
-                  "#ffffff",
-
-                fontWeight:
-                  800,
-
-                textDecoration:
-                  "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "16px",
+                flexWrap: "wrap",
               }}
             >
-              Quản lý tài khoản
-            </Link>
-          </div>
-        </section>
+              <div>
+                <h2 style={{ margin: "0 0 4px" }}>
+                  Cập nhật DATA
+                </h2>
+
+                <p
+                  style={{
+                    margin: 0,
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  Upload file DATA mới, thay danh mục cũ và đồng bộ tên/giá sản
+                  phẩm đang theo dõi.
+                </p>
+              </div>
+
+              <Link
+                href="/dashboard/catalog"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minHeight: "40px",
+                  padding: "8px 16px",
+                  borderRadius: "8px",
+                  background: "var(--kk-red)",
+                  color: "#ffffff",
+                  fontWeight: 800,
+                  textDecoration: "none",
+                }}
+              >
+                Upload DATA
+              </Link>
+            </div>
+          </section>
+        </>
       )}
-
-
-      {/* =================================================
-          PRODUCTS
-      ================================================== */}
 
       <ProductsTable />
     </main>
