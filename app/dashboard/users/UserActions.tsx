@@ -80,6 +80,13 @@ export default function UserActions({
   const canChangePassword =
     isAdmin || isSelf;
 
+  /*
+   * Chỉ ADMIN được xóa tài khoản khác.
+   * Không cho ADMIN tự xóa chính mình.
+   */
+  const canDeleteUser =
+    isAdmin && !isSelf;
+
   const [editing, setEditing] =
     useState(false);
 
@@ -90,6 +97,11 @@ export default function UserActions({
 
   const [loading, setLoading] =
     useState(false);
+
+  const [
+    deletingUser,
+    setDeletingUser,
+  ] = useState(false);
 
   const [error, setError] =
     useState("");
@@ -149,6 +161,65 @@ export default function UserActions({
     editingEmailValue,
     setEditingEmailValue,
   ] = useState("");
+
+  // ====================================================
+  // DELETE USER
+  // ====================================================
+
+  async function handleDeleteUser() {
+    clearMessages();
+
+    const confirmed =
+      window.confirm(
+        `Xóa tài khoản "${user.username}"?\n\n` +
+        "Tài khoản chỉ được xóa hẳn nếu không còn dữ liệu HSD, lịch sử gửi cảnh báo hoặc dữ liệu ràng buộc. " +
+        "Nếu đã có dữ liệu, hệ thống sẽ yêu cầu khóa tài khoản thay vì xóa."
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setDeletingUser(true);
+
+      const response =
+        await fetch(
+          `/api/users/${user.id}`,
+          {
+            method: "DELETE",
+          }
+        );
+
+      const data =
+        await readJson(response);
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "Không thể xóa tài khoản."
+        );
+      }
+
+      setEditing(false);
+      setChangingPassword(false);
+
+      setSuccess(
+        data.message ||
+          "Đã xóa tài khoản."
+      );
+
+      await onChanged();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Không thể xóa tài khoản."
+      );
+    } finally {
+      setDeletingUser(false);
+    }
+  }
 
   // ====================================================
   // PASSWORD
@@ -780,11 +851,37 @@ export default function UserActions({
                 true
               );
             }}
-            disabled={loading}
+            disabled={
+              loading ||
+              deletingUser
+            }
           >
             {isSelf
               ? "Đổi mật khẩu"
               : "Reset mật khẩu"}
+          </button>
+        )}
+
+        {canDeleteUser && (
+          <button
+            type="button"
+            onClick={
+              handleDeleteUser
+            }
+            disabled={
+              loading ||
+              deletingUser
+            }
+            style={{
+              color:
+                "var(--danger)",
+              borderColor:
+                "var(--danger)",
+            }}
+          >
+            {deletingUser
+              ? "Đang xóa..."
+              : "Xóa User"}
           </button>
         )}
       </div>

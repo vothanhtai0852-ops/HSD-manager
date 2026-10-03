@@ -807,3 +807,361 @@ export async function PATCH(
     );
   }
 }
+
+// ======================================================
+// DELETE
+// XÓA TÀI KHOẢN
+// Chỉ ADMIN. Không cho tự xóa.
+// Chỉ hard-delete khi không còn dữ liệu bị FK RESTRICT.
+// ======================================================
+
+export async function DELETE(
+  _request: Request,
+  context: {
+    params: Promise<{
+      id: string;
+    }>;
+  }
+) {
+  try {
+    const { id } =
+      await context.params;
+
+    if (!isValidUuid(id)) {
+      return NextResponse.json(
+        {
+          error:
+            "ID tài khoản không hợp lệ.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    const auth =
+      await getCurrentUser();
+
+    if (auth.error) {
+      return auth.error;
+    }
+
+    const currentUser =
+      auth.user;
+
+    if (
+      currentUser.role !==
+      "ADMIN"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Chỉ ADMIN mới có quyền xóa tài khoản.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    if (
+      currentUser.id === id
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Bạn không thể tự xóa tài khoản đang đăng nhập.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    const targetUser =
+      await getTargetUser(id);
+
+    if (!targetUser) {
+      return NextResponse.json(
+        {
+          error:
+            "Tài khoản không tồn tại.",
+        },
+        {
+          status: 404,
+        }
+      );
+    }
+
+    /*
+     * users.parent_id dùng ON DELETE RESTRICT.
+     * Manager còn nhân viên thì phải gỡ nhân viên trước.
+     */
+    const {
+      count: childCount,
+      error: childError,
+    } = await supabaseServer
+      .from("users")
+      .select(
+        "id",
+        {
+          count: "exact",
+          head: true,
+        }
+      )
+      .eq(
+        "parent_id",
+        id
+      );
+
+    if (childError) {
+      console.error(
+        "DELETE_USER_CHILD_CHECK_ERROR:",
+        childError
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            "Không thể kiểm tra nhân viên trực thuộc.",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    if (
+      (childCount ?? 0) > 0
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            `Không thể xóa "${targetUser.username}" vì tài khoản này vẫn đang quản lý ${childCount} nhân viên. Hãy gỡ nhân viên khỏi Manager trước.`,
+        },
+        {
+          status: 409,
+        }
+      );
+    }
+
+    /*
+     * products.user_id dùng ON DELETE RESTRICT.
+     * Không xóa products chỉ để xóa user, vì sẽ mất dữ liệu HSD.
+     */
+    const {
+      count: productCount,
+      error: productError,
+    } = await supabaseServer
+      .from("products")
+      .select(
+        "id",
+        {
+          count: "exact",
+          head: true,
+        }
+      )
+      .eq(
+        "user_id",
+        id
+      );
+
+    if (productError) {
+      console.error(
+        "DELETE_USER_PRODUCT_CHECK_ERROR:",
+        productError
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            "Không thể kiểm tra dữ liệu sản phẩm của tài khoản.",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    /*
+     * alert_logs.user_id cũng ON DELETE RESTRICT.
+     */
+    const {
+      count: alertLogCount,
+      error: alertLogError,
+    } = await supabaseServer
+      .from("alert_logs")
+      .select(
+        "id",
+        {
+          count: "exact",
+          head: true,
+        }
+      )
+      .eq(
+        "user_id",
+        id
+      );
+
+    if (alertLogError) {
+      console.error(
+        "DELETE_USER_ALERT_LOG_CHECK_ERROR:",
+        alertLogError
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            "Không thể kiểm tra lịch sử cảnh báo của tài khoản.",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    /*
+     * catalog_import_jobs.actor_user_id là RESTRICT.
+     * Thường chỉ ADMIN từng upload DATA mới có record ở đây.
+     */
+    const {
+      count: importJobCount,
+      error: importJobError,
+    } = await supabaseServer
+      .from("catalog_import_jobs")
+      .select(
+        "id",
+        {
+          count: "exact",
+          head: true,
+        }
+      )
+      .eq(
+        "actor_user_id",
+        id
+      );
+
+    if (importJobError) {
+      console.error(
+        "DELETE_USER_IMPORT_JOB_CHECK_ERROR:",
+        importJobError
+      );
+
+      /*
+       * Không cho lỗi kiểm tra dependency biến thành xóa mù.
+       */
+      return NextResponse.json(
+        {
+          error:
+            "Không thể kiểm tra lịch sử cập nhật DATA của tài khoản.",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    const dependencies = [
+      (productCount ?? 0) > 0
+        ? `${productCount} sản phẩm HSD`
+        : null,
+      (alertLogCount ?? 0) > 0
+        ? `${alertLogCount} lịch sử cảnh báo`
+        : null,
+      (importJobCount ?? 0) > 0
+        ? `${importJobCount} phiên cập nhật DATA`
+        : null,
+    ].filter(
+      (value): value is string =>
+        Boolean(value)
+    );
+
+    if (
+      dependencies.length > 0
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            `Không thể xóa hẳn "${targetUser.username}" vì còn ${dependencies.join(
+              ", "
+            )}. Hãy dùng Sửa → bỏ Active để khóa tài khoản và giữ nguyên dữ liệu lịch sử.`,
+        },
+        {
+          status: 409,
+        }
+      );
+    }
+
+    /*
+     * Các bảng sau đã được schema cấu hình CASCADE/SET NULL:
+     * - user_emails: CASCADE
+     * - sessions: CASCADE
+     * - alert_configs: CASCADE
+     * - history_logs.actor_user_id: SET NULL
+     * - reports.user_id: SET NULL
+     */
+    const {
+      error: deleteError,
+    } = await supabaseServer
+      .from("users")
+      .delete()
+      .eq(
+        "id",
+        id
+      );
+
+    if (deleteError) {
+      console.error(
+        "DELETE_USER_DATABASE_ERROR:",
+        deleteError
+      );
+
+      if (
+        deleteError.code ===
+        "23503"
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Tài khoản vẫn còn dữ liệu liên kết nên chưa thể xóa hẳn. Hãy khóa tài khoản bằng Active = OFF để giữ dữ liệu.",
+          },
+          {
+            status: 409,
+          }
+        );
+      }
+
+      return NextResponse.json(
+        {
+          error:
+            "Không thể xóa tài khoản.",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message:
+        `Đã xóa tài khoản "${targetUser.username}".`,
+    });
+  } catch (error) {
+    console.error(
+      "DELETE_USER_ERROR:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          "Có lỗi xảy ra khi xóa tài khoản.",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+}
+
