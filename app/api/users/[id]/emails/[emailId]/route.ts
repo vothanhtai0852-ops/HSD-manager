@@ -1,38 +1,33 @@
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import {
+  NextResponse,
+} from "next/server";
+import {
+  cookies,
+} from "next/headers";
 
-import { supabaseServer } from "@/lib/supabase-server";
-import { verifySessionToken } from "@/lib/session";
-
-
-type UserRole =
-  | "ADMIN"
-  | "MANAGER"
-  | "USER";
-
+import {
+  supabaseServer,
+} from "@/lib/supabase-server";
+import {
+  verifySessionToken,
+} from "@/lib/session";
 
 type CurrentUser = {
   id: string;
-  role: UserRole;
+  role:
+    | "ADMIN"
+    | "MANAGER"
+    | "USER";
   active: boolean;
 };
 
-
-type TargetUser = {
-  id: string;
-  role: UserRole;
-  parent_id: string | null;
-};
-
-
-type TargetEmail = {
+type EmailRow = {
   id: string;
   user_id: string;
   email: string;
   active: boolean;
   is_primary: boolean;
 };
-
 
 function isValidUuid(
   value: string
@@ -42,8 +37,24 @@ function isValidUuid(
   );
 }
 
+function normalizeEmail(
+  value: unknown
+): string {
+  return typeof value ===
+    "string"
+    ? value.trim().toLowerCase()
+    : "";
+}
 
-async function getCurrentUser(): Promise<
+function isValidEmail(
+  value: string
+): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    value
+  );
+}
+
+async function getAdmin(): Promise<
   | {
       user: CurrentUser;
       error: null;
@@ -61,169 +72,143 @@ async function getCurrentUser(): Promise<
       "hsd_session"
     )?.value;
 
-
   if (!token) {
     return {
       user: null,
-
-      error:
-        NextResponse.json(
-          {
-            error:
-              "Chưa đăng nhập.",
-          },
-          {
-            status: 401,
-          }
-        ),
+      error: NextResponse.json(
+        {
+          error:
+            "Chưa đăng nhập.",
+        },
+        {
+          status: 401,
+        }
+      ),
     };
   }
-
 
   const session =
     await verifySessionToken(
       token
     );
 
-
   if (!session) {
     return {
       user: null,
-
-      error:
-        NextResponse.json(
-          {
-            error:
-              "Phiên đăng nhập không hợp lệ.",
-          },
-          {
-            status: 401,
-          }
-        ),
+      error: NextResponse.json(
+        {
+          error:
+            "Phiên đăng nhập không hợp lệ.",
+        },
+        {
+          status: 401,
+        }
+      ),
     };
   }
-
 
   const {
     data,
     error,
   } = await supabaseServer
     .from("users")
-    .select(`
-      id,
-      role,
-      active
-    `)
+    .select(
+      `
+        id,
+        role,
+        active
+      `
+    )
     .eq(
       "id",
       session.userId
     )
     .maybeSingle();
 
+  if (error) {
+    console.error(
+      "EMAIL_ADMIN_CHECK_ERROR:",
+      error
+    );
+
+    return {
+      user: null,
+      error: NextResponse.json(
+        {
+          error:
+            "Không thể kiểm tra tài khoản.",
+        },
+        {
+          status: 500,
+        }
+      ),
+    };
+  }
 
   if (
-    error ||
     !data ||
     !data.active
   ) {
     return {
       user: null,
-
-      error:
-        NextResponse.json(
-          {
-            error:
-              "Tài khoản không hợp lệ.",
-          },
-          {
-            status: 401,
-          }
-        ),
+      error: NextResponse.json(
+        {
+          error:
+            "Tài khoản không hợp lệ.",
+        },
+        {
+          status: 401,
+        }
+      ),
     };
   }
 
+  const user =
+    data as CurrentUser;
+
+  if (
+    user.role !== "ADMIN"
+  ) {
+    return {
+      user: null,
+      error: NextResponse.json(
+        {
+          error:
+            "Chỉ ADMIN mới có quyền quản lý Gmail tài khoản.",
+        },
+        {
+          status: 403,
+        }
+      ),
+    };
+  }
 
   return {
-    user:
-      data as CurrentUser,
-
+    user,
     error: null,
   };
 }
 
-
-async function loadTargetUser(
-  id: string
-): Promise<TargetUser | null> {
-  const {
-    data,
-    error,
-  } = await supabaseServer
-    .from("users")
-    .select(`
-      id,
-      role,
-      parent_id
-    `)
-    .eq(
-      "id",
-      id
-    )
-    .maybeSingle();
-
-
-  if (error) {
-    throw new Error(
-      "Không thể tải tài khoản."
-    );
-  }
-
-
-  return data as
-    | TargetUser
-    | null;
-}
-
-
-async function checkPermission(
-  currentUser: CurrentUser,
-  targetUser: TargetUser
-) {
-  if (
-    currentUser.role ===
-    "ADMIN"
-  ) {
-    return true;
-  }
-
-
-  return (
-    currentUser.role ===
-      "MANAGER" &&
-    targetUser.role ===
-      "USER" &&
-    targetUser.parent_id ===
-      currentUser.id
-  );
-}
-
-
-async function loadTargetEmail(
+async function getEmail(
   userId: string,
   emailId: string
-): Promise<TargetEmail | null> {
+): Promise<
+  EmailRow | null
+> {
   const {
     data,
     error,
   } = await supabaseServer
     .from("user_emails")
-    .select(`
-      id,
-      user_id,
-      email,
-      active,
-      is_primary
-    `)
+    .select(
+      `
+        id,
+        user_id,
+        email,
+        active,
+        is_primary
+      `
+    )
     .eq(
       "id",
       emailId
@@ -234,28 +219,70 @@ async function loadTargetEmail(
     )
     .maybeSingle();
 
-
   if (error) {
+    console.error(
+      "EMAIL_LOAD_ERROR:",
+      error
+    );
+
     throw new Error(
-      "Không thể tải Email."
+      "Không thể tải Gmail."
     );
   }
 
-
   return data as
-    | TargetEmail
+    | EmailRow
     | null;
 }
 
+async function ensureAnotherActiveEmail(
+  userId: string,
+  excludedEmailId: string
+) {
+  const {
+    data,
+    error,
+  } = await supabaseServer
+    .from("user_emails")
+    .select(
+      `
+        id,
+        active,
+        is_primary
+      `
+    )
+    .eq(
+      "user_id",
+      userId
+    )
+    .eq(
+      "active",
+      true
+    )
+    .neq(
+      "id",
+      excludedEmailId
+    )
+    .limit(1);
 
-// ======================================================
-// PATCH
-// BẬT / TẮT EMAIL
-// ======================================================
+  if (error) {
+    console.error(
+      "EMAIL_OTHER_ACTIVE_ERROR:",
+      error
+    );
+
+    throw new Error(
+      "Không thể kiểm tra Gmail khác."
+    );
+  }
+
+  return (
+    data?.[0] ?? null
+  );
+}
 
 export async function PATCH(
   request: Request,
-
   context: {
     params: Promise<{
       id: string;
@@ -267,9 +294,7 @@ export async function PATCH(
     const {
       id,
       emailId,
-    } =
-      await context.params;
-
+    } = await context.params;
 
     if (
       !isValidUuid(id) ||
@@ -286,65 +311,24 @@ export async function PATCH(
       );
     }
 
-
     const auth =
-      await getCurrentUser();
-
+      await getAdmin();
 
     if (auth.error) {
       return auth.error;
     }
 
-
-    const targetUser =
-      await loadTargetUser(id);
-
-
-    if (!targetUser) {
-      return NextResponse.json(
-        {
-          error:
-            "Tài khoản không tồn tại.",
-        },
-        {
-          status: 404,
-        }
-      );
-    }
-
-
-    const allowed =
-      await checkPermission(
-        auth.user,
-        targetUser
-      );
-
-
-    if (!allowed) {
-      return NextResponse.json(
-        {
-          error:
-            "Bạn không có quyền quản lý Email của tài khoản này.",
-        },
-        {
-          status: 403,
-        }
-      );
-    }
-
-
-    const targetEmail =
-      await loadTargetEmail(
+    const target =
+      await getEmail(
         id,
         emailId
       );
 
-
-    if (!targetEmail) {
+    if (!target) {
       return NextResponse.json(
         {
           error:
-            "Email không tồn tại.",
+            "Gmail không tồn tại trong tài khoản này.",
         },
         {
           status: 404,
@@ -352,58 +336,235 @@ export async function PATCH(
       );
     }
 
-
     const body =
       await request.json();
 
+    const updates: {
+      email?: string;
+      active?: boolean;
+      is_primary?: boolean;
+      updated_at?: string;
+    } = {
+      updated_at:
+        new Date().toISOString(),
+    };
 
     if (
-      typeof body.active !==
-      "boolean"
+      Object.prototype.hasOwnProperty.call(
+        body,
+        "email"
+      )
     ) {
-      return NextResponse.json(
-        {
-          error:
-            "Trạng thái Email không hợp lệ.",
-        },
-        {
-          status: 400,
-        }
-      );
+      const email =
+        normalizeEmail(
+          body.email
+        );
+
+      if (
+        !email ||
+        !isValidEmail(email)
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Địa chỉ Gmail không hợp lệ.",
+          },
+          {
+            status: 400,
+          }
+        );
+      }
+
+      const {
+        data: duplicate,
+        error:
+          duplicateError,
+      } = await supabaseServer
+        .from("user_emails")
+        .select("id")
+        .eq(
+          "user_id",
+          id
+        )
+        .ilike(
+          "email",
+          email
+        )
+        .neq(
+          "id",
+          emailId
+        )
+        .maybeSingle();
+
+      if (duplicateError) {
+        console.error(
+          "EDIT_EMAIL_DUPLICATE_CHECK_ERROR:",
+          duplicateError
+        );
+
+        return NextResponse.json(
+          {
+            error:
+              "Không thể kiểm tra Gmail.",
+          },
+          {
+            status: 500,
+          }
+        );
+      }
+
+      if (duplicate) {
+        return NextResponse.json(
+          {
+            error:
+              "Gmail này đã có trong tài khoản.",
+          },
+          {
+            status: 409,
+          }
+        );
+      }
+
+      updates.email =
+        email;
     }
-
-
-    /*
-     * Không cho tắt email PRIMARY.
-     * Muốn thay đổi primary sẽ làm riêng sau,
-     * tránh trạng thái user không còn email chính.
-     */
 
     if (
-      targetEmail.is_primary &&
-      body.active === false
+      Object.prototype.hasOwnProperty.call(
+        body,
+        "active"
+      )
     ) {
-      return NextResponse.json(
-        {
-          error:
-            "Không thể tắt Email chính.",
-        },
-        {
-          status: 400,
+      if (
+        typeof body.active !==
+        "boolean"
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Trạng thái Gmail không hợp lệ.",
+          },
+          {
+            status: 400,
+          }
+        );
+      }
+
+      if (
+        body.active === false &&
+        target.active
+      ) {
+        const other =
+          await ensureAnotherActiveEmail(
+            id,
+            emailId
+          );
+
+        if (!other) {
+          return NextResponse.json(
+            {
+              error:
+                "Mỗi tài khoản phải có ít nhất 1 Gmail đang Active.",
+            },
+            {
+              status: 400,
+            }
+          );
         }
-      );
+      }
+
+      updates.active =
+        body.active;
+
+      if (
+        body.active === false &&
+        target.is_primary
+      ) {
+        updates.is_primary =
+          false;
+      }
     }
 
+    if (
+      Object.prototype.hasOwnProperty.call(
+        body,
+        "isPrimary"
+      )
+    ) {
+      if (
+        typeof body.isPrimary !==
+        "boolean"
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Trạng thái Gmail chính không hợp lệ.",
+          },
+          {
+            status: 400,
+          }
+        );
+      }
+
+      if (
+        body.isPrimary === true
+      ) {
+        const {
+          error:
+            clearPrimaryError,
+        } = await supabaseServer
+          .from("user_emails")
+          .update({
+            is_primary:
+              false,
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq(
+            "user_id",
+            id
+          )
+          .neq(
+            "id",
+            emailId
+          );
+
+        if (
+          clearPrimaryError
+        ) {
+          console.error(
+            "EMAIL_CLEAR_PRIMARY_ERROR:",
+            clearPrimaryError
+          );
+
+          return NextResponse.json(
+            {
+              error:
+                "Không thể đổi Gmail chính.",
+            },
+            {
+              status: 500,
+            }
+          );
+        }
+
+        updates.is_primary =
+          true;
+
+        updates.active =
+          true;
+      } else {
+        updates.is_primary =
+          false;
+      }
+    }
 
     const {
-      data: updatedEmail,
+      data: updated,
       error: updateError,
     } = await supabaseServer
       .from("user_emails")
-      .update({
-        active:
-          body.active,
-      })
+      .update(updates)
       .eq(
         "id",
         emailId
@@ -412,25 +573,41 @@ export async function PATCH(
         "user_id",
         id
       )
-      .select(`
-        id,
-        email,
-        active,
-        is_primary
-      `)
+      .select(
+        `
+          id,
+          email,
+          active,
+          is_primary
+        `
+      )
       .single();
-
 
     if (updateError) {
       console.error(
-        "UPDATE_USER_EMAIL_ERROR:",
+        "EDIT_EMAIL_ERROR:",
         updateError
       );
+
+      if (
+        updateError.code ===
+        "23505"
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Gmail này đã có trong tài khoản.",
+          },
+          {
+            status: 409,
+          }
+        );
+      }
 
       return NextResponse.json(
         {
           error:
-            "Không thể cập nhật Email.",
+            "Không thể cập nhật Gmail.",
         },
         {
           status: 500,
@@ -438,40 +615,65 @@ export async function PATCH(
       );
     }
 
+    /*
+     * Nếu vừa tắt Gmail chính,
+     * tự chọn 1 Gmail active khác làm chính.
+     */
+    if (
+      target.is_primary &&
+      updated.active === false
+    ) {
+      const other =
+        await ensureAnotherActiveEmail(
+          id,
+          emailId
+        );
+
+      if (other) {
+        await supabaseServer
+          .from("user_emails")
+          .update({
+            is_primary:
+              true,
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq(
+            "id",
+            other.id
+          )
+          .eq(
+            "user_id",
+            id
+          );
+      }
+    }
 
     return NextResponse.json({
       success: true,
-
       message:
-        body.active
-          ? "Đã bật Email."
-          : "Đã tắt Email.",
-
+        "Đã cập nhật Gmail.",
       email: {
         id:
-          updatedEmail.id,
-
+          updated.id,
         email:
-          updatedEmail.email,
-
+          updated.email,
         active:
-          updatedEmail.active,
-
+          updated.active,
         isPrimary:
-          updatedEmail.is_primary,
+          updated.is_primary,
       },
     });
   } catch (error) {
     console.error(
-      "UPDATE_USER_EMAIL_ROUTE_ERROR:",
+      "EDIT_EMAIL_ROUTE_ERROR:",
       error
     );
-
 
     return NextResponse.json(
       {
         error:
-          "Có lỗi xảy ra khi cập nhật Email.",
+          "Có lỗi xảy ra khi cập nhật Gmail.",
       },
       {
         status: 500,
@@ -480,15 +682,8 @@ export async function PATCH(
   }
 }
 
-
-// ======================================================
-// DELETE
-// XÓA EMAIL PHỤ
-// ======================================================
-
 export async function DELETE(
   _request: Request,
-
   context: {
     params: Promise<{
       id: string;
@@ -500,9 +695,7 @@ export async function DELETE(
     const {
       id,
       emailId,
-    } =
-      await context.params;
-
+    } = await context.params;
 
     if (
       !isValidUuid(id) ||
@@ -519,65 +712,24 @@ export async function DELETE(
       );
     }
 
-
     const auth =
-      await getCurrentUser();
-
+      await getAdmin();
 
     if (auth.error) {
       return auth.error;
     }
 
-
-    const targetUser =
-      await loadTargetUser(id);
-
-
-    if (!targetUser) {
-      return NextResponse.json(
-        {
-          error:
-            "Tài khoản không tồn tại.",
-        },
-        {
-          status: 404,
-        }
-      );
-    }
-
-
-    const allowed =
-      await checkPermission(
-        auth.user,
-        targetUser
-      );
-
-
-    if (!allowed) {
-      return NextResponse.json(
-        {
-          error:
-            "Bạn không có quyền quản lý Email của tài khoản này.",
-        },
-        {
-          status: 403,
-        }
-      );
-    }
-
-
-    const targetEmail =
-      await loadTargetEmail(
+    const target =
+      await getEmail(
         id,
         emailId
       );
 
-
-    if (!targetEmail) {
+    if (!target) {
       return NextResponse.json(
         {
           error:
-            "Email không tồn tại.",
+            "Gmail không tồn tại trong tài khoản này.",
         },
         {
           status: 404,
@@ -585,71 +737,28 @@ export async function DELETE(
       );
     }
 
-
-    /*
-     * Không xóa PRIMARY.
-     */
+    const other =
+      target.active
+        ? await ensureAnotherActiveEmail(
+            id,
+            emailId
+          )
+        : null;
 
     if (
-      targetEmail.is_primary
+      target.active &&
+      !other
     ) {
       return NextResponse.json(
         {
           error:
-            "Không thể xóa Email chính.",
+            "Không thể xóa Gmail Active cuối cùng của tài khoản.",
         },
         {
           status: 400,
         }
       );
     }
-
-
-    const {
-      count,
-      error: countError,
-    } = await supabaseServer
-      .from("user_emails")
-      .select(
-        "id",
-        {
-          count: "exact",
-          head: true,
-        }
-      )
-      .eq(
-        "user_id",
-        id
-      );
-
-
-    if (countError) {
-      return NextResponse.json(
-        {
-          error:
-            "Không thể kiểm tra danh sách Email.",
-        },
-        {
-          status: 500,
-        }
-      );
-    }
-
-
-    if (
-      (count ?? 0) <= 1
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "Tài khoản phải có ít nhất một Email.",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
 
     const {
       error: deleteError,
@@ -665,17 +774,16 @@ export async function DELETE(
         id
       );
 
-
     if (deleteError) {
       console.error(
-        "DELETE_USER_EMAIL_ERROR:",
+        "DELETE_EMAIL_ERROR:",
         deleteError
       );
 
       return NextResponse.json(
         {
           error:
-            "Không thể xóa Email.",
+            "Không thể xóa Gmail.",
         },
         {
           status: 500,
@@ -683,24 +791,53 @@ export async function DELETE(
       );
     }
 
+    if (
+      target.is_primary &&
+      other
+    ) {
+      const {
+        error:
+          newPrimaryError,
+      } = await supabaseServer
+        .from("user_emails")
+        .update({
+          is_primary:
+            true,
+          updated_at:
+            new Date().toISOString(),
+        })
+        .eq(
+          "id",
+          other.id
+        )
+        .eq(
+          "user_id",
+          id
+        );
+
+      if (newPrimaryError) {
+        console.error(
+          "DELETE_EMAIL_NEW_PRIMARY_ERROR:",
+          newPrimaryError
+        );
+      }
+    }
 
     return NextResponse.json({
       success: true,
-
       message:
-        "Xóa Email thành công.",
+        "Đã xóa Gmail.",
     });
   } catch (error) {
     console.error(
-      "DELETE_USER_EMAIL_ROUTE_ERROR:",
+      "DELETE_EMAIL_ROUTE_ERROR:",
       error
     );
-
 
     return NextResponse.json(
       {
         error:
-          "Có lỗi xảy ra khi xóa Email.",
+          "Có lỗi xảy ra khi xóa Gmail.",
       },
       {
         status: 500,

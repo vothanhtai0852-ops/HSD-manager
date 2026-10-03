@@ -65,14 +65,17 @@ export default function UserActions({
     currentUser.role === "ADMIN";
 
   /*
-   * MANAGER không có quyền sửa tài khoản nhân viên.
-   * MANAGER chỉ gán/gỡ nhân viên trong modal "Quản lý nhân viên".
+   * Sửa thông tin tài khoản + Gmail:
+   * chỉ ADMIN.
+   *
+   * MANAGER chỉ gán/gỡ nhân viên bằng
+   * màn hình Quản lý nhân viên.
    */
   const canEditAccount = isAdmin;
 
   /*
-   * ADMIN reset được mật khẩu.
-   * Mọi tài khoản đổi được mật khẩu của chính mình.
+   * ADMIN reset được mật khẩu người khác.
+   * Mỗi tài khoản đổi được mật khẩu chính mình.
    */
   const canChangePassword =
     isAdmin || isSelf;
@@ -119,6 +122,38 @@ export default function UserActions({
     user.parent?.username ?? ""
   );
 
+  // ====================================================
+  // EMAIL MANAGEMENT
+  // ====================================================
+
+  const [
+    newEmail,
+    setNewEmail,
+  ] = useState("");
+
+  const [
+    emailActionId,
+    setEmailActionId,
+  ] = useState<string | null>(
+    null
+  );
+
+  const [
+    editingEmailId,
+    setEditingEmailId,
+  ] = useState<string | null>(
+    null
+  );
+
+  const [
+    editingEmailValue,
+    setEditingEmailValue,
+  ] = useState("");
+
+  // ====================================================
+  // PASSWORD
+  // ====================================================
+
   const [
     currentPassword,
     setCurrentPassword,
@@ -136,11 +171,15 @@ export default function UserActions({
 
   useEffect(() => {
     setUsername(user.username);
+
     setDisplayName(
       user.displayName ?? ""
     );
+
     setRole(user.role);
+
     setActive(user.active);
+
     setParentUsername(
       user.parent?.username ?? ""
     );
@@ -153,20 +192,56 @@ export default function UserActions({
 
   function resetEditForm() {
     setUsername(user.username);
+
     setDisplayName(
       user.displayName ?? ""
     );
+
     setRole(user.role);
+
     setActive(user.active);
+
     setParentUsername(
       user.parent?.username ?? ""
     );
+
+    setNewEmail("");
+    setEditingEmailId(null);
+    setEditingEmailValue("");
+    setEmailActionId(null);
+  }
+
+  function normalizeEmail(
+    value: string
+  ) {
+    return value
+      .trim()
+      .toLowerCase();
+  }
+
+  function isValidEmail(
+    value: string
+  ) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      value
+    );
+  }
+
+  async function readJson(
+    response: Response
+  ) {
+    try {
+      return await response.json();
+    } catch {
+      return {};
+    }
   }
 
   async function handleUpdate(
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
+
     clearMessages();
 
     const normalizedUsername =
@@ -211,7 +286,7 @@ export default function UserActions({
         );
 
       const data =
-        await response.json();
+        await readJson(response);
 
       if (!response.ok) {
         throw new Error(
@@ -226,6 +301,7 @@ export default function UserActions({
       );
 
       setEditing(false);
+
       await onChanged();
     } catch (err) {
       setError(
@@ -238,13 +314,355 @@ export default function UserActions({
     }
   }
 
+  // ====================================================
+  // EMAIL ACTIONS
+  // ====================================================
+
+  async function handleAddEmail() {
+    clearMessages();
+
+    const email =
+      normalizeEmail(newEmail);
+
+    if (!email) {
+      setError(
+        "Vui lòng nhập Gmail cần thêm."
+      );
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      setError(
+        "Địa chỉ Gmail không hợp lệ."
+      );
+      return;
+    }
+
+    try {
+      setEmailActionId("ADD");
+
+      const response =
+        await fetch(
+          `/api/users/${user.id}/emails`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body:
+              JSON.stringify({
+                email,
+              }),
+          }
+        );
+
+      const data =
+        await readJson(response);
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "Không thể thêm Gmail."
+        );
+      }
+
+      setNewEmail("");
+
+      setSuccess(
+        data.message ||
+          "Đã thêm Gmail."
+      );
+
+      await onChanged();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Không thể thêm Gmail."
+      );
+    } finally {
+      setEmailActionId(null);
+    }
+  }
+
+  function startEditEmail(
+    email: UserEmail
+  ) {
+    clearMessages();
+
+    setEditingEmailId(
+      email.id
+    );
+
+    setEditingEmailValue(
+      email.email
+    );
+  }
+
+  async function saveEditedEmail(
+    emailId: string
+  ) {
+    clearMessages();
+
+    const email =
+      normalizeEmail(
+        editingEmailValue
+      );
+
+    if (!email) {
+      setError(
+        "Vui lòng nhập Gmail."
+      );
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      setError(
+        "Địa chỉ Gmail không hợp lệ."
+      );
+      return;
+    }
+
+    try {
+      setEmailActionId(
+        emailId
+      );
+
+      const response =
+        await fetch(
+          `/api/users/${user.id}/emails/${emailId}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body:
+              JSON.stringify({
+                email,
+              }),
+          }
+        );
+
+      const data =
+        await readJson(response);
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "Không thể sửa Gmail."
+        );
+      }
+
+      setEditingEmailId(null);
+      setEditingEmailValue("");
+
+      setSuccess(
+        data.message ||
+          "Đã sửa Gmail."
+      );
+
+      await onChanged();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Không thể sửa Gmail."
+      );
+    } finally {
+      setEmailActionId(null);
+    }
+  }
+
+  async function setPrimaryEmail(
+    emailId: string
+  ) {
+    clearMessages();
+
+    try {
+      setEmailActionId(
+        emailId
+      );
+
+      const response =
+        await fetch(
+          `/api/users/${user.id}/emails/${emailId}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body:
+              JSON.stringify({
+                isPrimary: true,
+              }),
+          }
+        );
+
+      const data =
+        await readJson(response);
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "Không thể đặt Gmail chính."
+        );
+      }
+
+      setSuccess(
+        data.message ||
+          "Đã đặt Gmail chính."
+      );
+
+      await onChanged();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Không thể đặt Gmail chính."
+      );
+    } finally {
+      setEmailActionId(null);
+    }
+  }
+
+  async function toggleEmailActive(
+    email: UserEmail
+  ) {
+    clearMessages();
+
+    try {
+      setEmailActionId(
+        email.id
+      );
+
+      const response =
+        await fetch(
+          `/api/users/${user.id}/emails/${email.id}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body:
+              JSON.stringify({
+                active:
+                  !email.active,
+              }),
+          }
+        );
+
+      const data =
+        await readJson(response);
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "Không thể cập nhật trạng thái Gmail."
+        );
+      }
+
+      setSuccess(
+        data.message ||
+          "Đã cập nhật Gmail."
+      );
+
+      await onChanged();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Không thể cập nhật trạng thái Gmail."
+      );
+    } finally {
+      setEmailActionId(null);
+    }
+  }
+
+  async function deleteEmail(
+    email: UserEmail
+  ) {
+    clearMessages();
+
+    const confirmed =
+      window.confirm(
+        `Xóa Gmail "${email.email}" khỏi ${user.username}?`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setEmailActionId(
+        email.id
+      );
+
+      const response =
+        await fetch(
+          `/api/users/${user.id}/emails/${email.id}`,
+          {
+            method: "DELETE",
+          }
+        );
+
+      const data =
+        await readJson(response);
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "Không thể xóa Gmail."
+        );
+      }
+
+      if (
+        editingEmailId ===
+        email.id
+      ) {
+        setEditingEmailId(
+          null
+        );
+
+        setEditingEmailValue(
+          ""
+        );
+      }
+
+      setSuccess(
+        data.message ||
+          "Đã xóa Gmail."
+      );
+
+      await onChanged();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Không thể xóa Gmail."
+      );
+    } finally {
+      setEmailActionId(null);
+    }
+  }
+
+  // ====================================================
+  // PASSWORD
+  // ====================================================
+
   async function handlePassword(
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
+
     clearMessages();
 
-    if (newPassword.length < 8) {
+    if (
+      newPassword.length < 8
+    ) {
       setError(
         "Mật khẩu mới phải có ít nhất 8 ký tự."
       );
@@ -283,18 +701,19 @@ export default function UserActions({
               "Content-Type":
                 "application/json",
             },
-            body: JSON.stringify({
-              currentPassword:
-                isSelf
-                  ? currentPassword
-                  : undefined,
-              newPassword,
-            }),
+            body:
+              JSON.stringify({
+                currentPassword:
+                  isSelf
+                    ? currentPassword
+                    : undefined,
+                newPassword,
+              }),
           }
         );
 
       const data =
-        await response.json();
+        await readJson(response);
 
       if (!response.ok) {
         throw new Error(
@@ -311,6 +730,7 @@ export default function UserActions({
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
+
       setChangingPassword(false);
     } catch (err) {
       setError(
@@ -345,9 +765,17 @@ export default function UserActions({
             type="button"
             onClick={() => {
               clearMessages();
-              setCurrentPassword("");
+
+              setCurrentPassword(
+                ""
+              );
+
               setNewPassword("");
-              setConfirmPassword("");
+
+              setConfirmPassword(
+                ""
+              );
+
               setChangingPassword(
                 true
               );
@@ -379,18 +807,27 @@ export default function UserActions({
           onMouseDown={(event) => {
             if (
               event.target ===
-              event.currentTarget
+              event.currentTarget &&
+              !loading &&
+              !emailActionId
             ) {
               setEditing(false);
             }
           }}
         >
-          <div className="kk-modal user-edit-modal">
+          <div
+            className="kk-modal user-edit-modal"
+            style={{
+              width:
+                "min(860px, 100%)",
+            }}
+          >
             <div className="modal-heading">
               <div>
                 <h2>
                   Sửa tài khoản
                 </h2>
+
                 <div className="kk-muted">
                   {user.username}
                 </div>
@@ -402,7 +839,12 @@ export default function UserActions({
                 onClick={() =>
                   setEditing(false)
                 }
-                disabled={loading}
+                disabled={
+                  loading ||
+                  Boolean(
+                    emailActionId
+                  )
+                }
                 aria-label="Đóng"
               >
                 ×
@@ -445,7 +887,9 @@ export default function UserActions({
                   <input
                     id={`display-${user.id}`}
                     type="text"
-                    value={displayName}
+                    value={
+                      displayName
+                    }
                     onChange={(event) =>
                       setDisplayName(
                         event.target
@@ -479,7 +923,9 @@ export default function UserActions({
                         event.target
                           .value as UserRole;
 
-                      setRole(nextRole);
+                      setRole(
+                        nextRole
+                      );
 
                       if (
                         nextRole !==
@@ -494,9 +940,11 @@ export default function UserActions({
                     <option value="USER">
                       USER
                     </option>
+
                     <option value="MANAGER">
                       MANAGER
                     </option>
+
                     <option value="ADMIN">
                       ADMIN
                     </option>
@@ -549,7 +997,13 @@ export default function UserActions({
                 )}
               </div>
 
-              <label className="active-checkbox">
+              <label
+                className="active-checkbox"
+                style={{
+                  marginTop:
+                    "16px",
+                }}
+              >
                 <input
                   type="checkbox"
                   checked={active}
@@ -567,9 +1021,364 @@ export default function UserActions({
                 Active
               </label>
 
+              {/* =========================================
+                  GMAIL NHẬN CẢNH BÁO
+              ========================================== */}
+
+              <div
+                style={{
+                  marginTop: "22px",
+                  paddingTop: "18px",
+                  borderTop:
+                    "1px solid var(--border)",
+                }}
+              >
+                <div
+                  style={{
+                    marginBottom:
+                      "12px",
+                  }}
+                >
+                  <h3
+                    style={{
+                      margin:
+                        "0 0 4px",
+                    }}
+                  >
+                    Gmail nhận cảnh báo
+                  </h3>
+
+                  <div className="kk-muted">
+                    Một User có thể có
+                    nhiều Gmail. Tất cả
+                    Gmail đang Active đều
+                    nhận email cảnh báo.
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "8px",
+                  }}
+                >
+                  {user.emails.length ===
+                  0 ? (
+                    <div
+                      className="kk-muted"
+                      style={{
+                        padding:
+                          "10px 0",
+                      }}
+                    >
+                      Chưa có Gmail.
+                    </div>
+                  ) : (
+                    user.emails.map(
+                      (item) => {
+                        const busy =
+                          emailActionId ===
+                          item.id;
+
+                        const isEditing =
+                          editingEmailId ===
+                          item.id;
+
+                        return (
+                          <div
+                            key={
+                              item.id
+                            }
+                            style={{
+                              display:
+                                "grid",
+                              gridTemplateColumns:
+                                "minmax(0, 1fr) auto",
+                              gap:
+                                "10px",
+                              alignItems:
+                                "center",
+                              padding:
+                                "10px",
+                              border:
+                                "1px solid var(--border)",
+                              borderRadius:
+                                "9px",
+                              background:
+                                "var(--surface-soft)",
+                            }}
+                          >
+                            <div
+                              style={{
+                                minWidth:
+                                  0,
+                              }}
+                            >
+                              {isEditing ? (
+                                <input
+                                  type="email"
+                                  value={
+                                    editingEmailValue
+                                  }
+                                  onChange={(
+                                    event
+                                  ) =>
+                                    setEditingEmailValue(
+                                      event
+                                        .target
+                                        .value
+                                    )
+                                  }
+                                  disabled={
+                                    busy
+                                  }
+                                  style={{
+                                    width:
+                                      "100%",
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  style={{
+                                    overflowWrap:
+                                      "anywhere",
+                                    fontWeight:
+                                      700,
+                                  }}
+                                >
+                                  {
+                                    item.email
+                                  }
+                                </div>
+                              )}
+
+                              <div
+                                style={{
+                                  display:
+                                    "flex",
+                                  gap:
+                                    "6px",
+                                  flexWrap:
+                                    "wrap",
+                                  marginTop:
+                                    "5px",
+                                  fontSize:
+                                    "12px",
+                                }}
+                              >
+                                {item.isPrimary && (
+                                  <span
+                                    className="kk-badge kk-badge-warning"
+                                  >
+                                    Gmail chính
+                                  </span>
+                                )}
+
+                                <span
+                                  className={
+                                    item.active
+                                      ? "kk-badge kk-badge-normal"
+                                      : "kk-badge kk-badge-error"
+                                  }
+                                >
+                                  {item.active
+                                    ? "Active"
+                                    : "Tắt"}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div
+                              style={{
+                                display:
+                                  "flex",
+                                gap:
+                                  "6px",
+                                flexWrap:
+                                  "wrap",
+                                justifyContent:
+                                  "flex-end",
+                              }}
+                            >
+                              {isEditing ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="kk-button-primary"
+                                    onClick={() =>
+                                      saveEditedEmail(
+                                        item.id
+                                      )
+                                    }
+                                    disabled={
+                                      busy
+                                    }
+                                  >
+                                    Lưu Gmail
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingEmailId(
+                                        null
+                                      );
+
+                                      setEditingEmailValue(
+                                        ""
+                                      );
+                                    }}
+                                    disabled={
+                                      busy
+                                    }
+                                  >
+                                    Hủy
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      startEditEmail(
+                                        item
+                                      )
+                                    }
+                                    disabled={
+                                      busy
+                                    }
+                                  >
+                                    Sửa Gmail
+                                  </button>
+
+                                  {!item.isPrimary && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setPrimaryEmail(
+                                          item.id
+                                        )
+                                      }
+                                      disabled={
+                                        busy ||
+                                        !item.active
+                                      }
+                                    >
+                                      Đặt chính
+                                    </button>
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      toggleEmailActive(
+                                        item
+                                      )
+                                    }
+                                    disabled={
+                                      busy
+                                    }
+                                  >
+                                    {item.active
+                                      ? "Tắt"
+                                      : "Bật"}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      deleteEmail(
+                                        item
+                                      )
+                                    }
+                                    disabled={
+                                      busy
+                                    }
+                                    style={{
+                                      color:
+                                        "var(--danger)",
+                                    }}
+                                  >
+                                    Xóa
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }
+                    )
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "minmax(0, 1fr) auto",
+                    gap: "8px",
+                    marginTop:
+                      "10px",
+                  }}
+                >
+                  <input
+                    type="email"
+                    placeholder="Thêm Gmail mới..."
+                    value={newEmail}
+                    onChange={(event) =>
+                      setNewEmail(
+                        event.target
+                          .value
+                      )
+                    }
+                    disabled={
+                      emailActionId ===
+                      "ADD"
+                    }
+                  />
+
+                  <button
+                    type="button"
+                    className="kk-button-primary"
+                    onClick={
+                      handleAddEmail
+                    }
+                    disabled={
+                      emailActionId ===
+                      "ADD"
+                    }
+                  >
+                    {emailActionId ===
+                    "ADD"
+                      ? "Đang thêm..."
+                      : "Thêm Gmail"}
+                  </button>
+                </div>
+              </div>
+
               {error && (
-                <div className="form-error">
+                <div
+                  className="form-error"
+                  style={{
+                    marginTop:
+                      "14px",
+                  }}
+                >
                   {error}
+                </div>
+              )}
+
+              {success && (
+                <div
+                  className="status-message status-success"
+                  style={{
+                    marginTop:
+                      "14px",
+                    marginBottom:
+                      0,
+                  }}
+                >
+                  {success}
                 </div>
               )}
 
@@ -578,22 +1387,34 @@ export default function UserActions({
                   type="button"
                   onClick={() => {
                     resetEditForm();
+
                     setEditing(false);
+
                     clearMessages();
                   }}
-                  disabled={loading}
+                  disabled={
+                    loading ||
+                    Boolean(
+                      emailActionId
+                    )
+                  }
                 >
-                  Hủy
+                  Đóng
                 </button>
 
                 <button
                   type="submit"
                   className="kk-button-primary"
-                  disabled={loading}
+                  disabled={
+                    loading ||
+                    Boolean(
+                      emailActionId
+                    )
+                  }
                 >
                   {loading
                     ? "Đang lưu..."
-                    : "Lưu thay đổi"}
+                    : "Lưu thông tin"}
                 </button>
               </div>
             </form>
@@ -623,6 +1444,7 @@ export default function UserActions({
                     ? "Đổi mật khẩu"
                     : "Reset mật khẩu"}
                 </h2>
+
                 <div className="kk-muted">
                   {user.username}
                 </div>
@@ -733,6 +1555,7 @@ export default function UserActions({
                   type="button"
                   onClick={() => {
                     clearMessages();
+
                     setChangingPassword(
                       false
                     );
