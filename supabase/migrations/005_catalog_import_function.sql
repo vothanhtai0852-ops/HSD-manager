@@ -1,17 +1,31 @@
 -- HSD MANAGER
--- 004_catalog_web_import.sql
+-- supabase/migrations/005_catalog_import_function.sql
+--
+-- RECOVERY VERSION
+-- 004 đã được ghi nhận là applied nhưng catalog_import_jobs không tồn tại.
+-- File 005 này tự rebuild toàn bộ hạ tầng import rồi mới tạo function.
+--
+-- AN TOÀN:
+-- Chỉ drop/recreate:
+--   public.catalog_import_staging
+--   public.catalog_import_jobs
+--   public.commit_catalog_import(uuid, uuid)
+--
+-- KHÔNG drop:
+--   public.users
+--   public.products
+--   public.product_catalog
+--   public.history_logs
 
--- Web import DATA cho ADMIN.
--- DATA mới chỉ thay catalog khi toàn bộ file upload đủ.
--- Sau commit, product_catalog cũ được đồng bộ/xóa theo file mới.
--- PRODUCTS đang theo dõi cũng được cập nhật product_name + sale_price
--- để web không giữ giá cũ khác DATA mới.
+drop function if exists public.commit_catalog_import(uuid, uuid);
 
-drop table if exists public.product_catalog_staging;
+drop table if exists public.catalog_import_staging cascade;
+drop table if exists public.catalog_import_jobs cascade;
 
-create table if not exists public.catalog_import_jobs (
+create table public.catalog_import_jobs (
   id uuid primary key default gen_random_uuid(),
-  actor_user_id uuid not null references public.users(id)
+  actor_user_id uuid not null
+    references public.users(id)
     on update cascade
     on delete restrict,
   file_name text not null,
@@ -20,20 +34,26 @@ create table if not exists public.catalog_import_jobs (
   result jsonb null,
   created_at timestamptz not null default now(),
   completed_at timestamptz null,
+  constraint catalog_import_jobs_file_name_not_blank
+    check (length(btrim(file_name)) > 0),
   constraint catalog_import_jobs_total_rows_valid
-    check (total_rows > 0 and total_rows <= 300000),
+    check (total_rows between 1 and 300000),
   constraint catalog_import_jobs_status_valid
     check (status in ('UPLOADING','PROCESSING','COMPLETED','FAILED'))
 );
 
-create index if not exists idx_catalog_import_jobs_actor
+create index idx_catalog_import_jobs_actor
   on public.catalog_import_jobs(actor_user_id);
 
-create index if not exists idx_catalog_import_jobs_created_at
+create index idx_catalog_import_jobs_created_at
   on public.catalog_import_jobs(created_at desc);
 
-create table if not exists public.catalog_import_staging (
-  import_id uuid not null references public.catalog_import_jobs(id)
+create index idx_catalog_import_jobs_status
+  on public.catalog_import_jobs(status);
+
+create table public.catalog_import_staging (
+  import_id uuid not null
+    references public.catalog_import_jobs(id)
     on update cascade
     on delete cascade,
   row_number integer not null,
@@ -52,23 +72,34 @@ create table if not exists public.catalog_import_staging (
     check (sale_price is null or sale_price >= 0)
 );
 
-create unique index if not exists ux_catalog_import_staging_code_ci
+create index idx_catalog_import_staging_import_id
+  on public.catalog_import_staging(import_id);
+
+create unique index ux_catalog_import_staging_code_ci
   on public.catalog_import_staging (
     import_id,
     lower(btrim(product_code))
   );
 
-create index if not exists idx_catalog_import_staging_import_id
-  on public.catalog_import_staging(import_id);
-
 create index if not exists idx_product_catalog_code_ci
-  on public.product_catalog (lower(btrim(product_code)));
+  on public.product_catalog(lower(btrim(product_code)));
+
+create index if not exists idx_products_product_code_ci
+  on public.products(lower(btrim(product_code)));
 
 alter table public.catalog_import_jobs enable row level security;
 alter table public.catalog_import_staging enable row level security;
 
 revoke all on table public.catalog_import_jobs from anon, authenticated;
 revoke all on table public.catalog_import_staging from anon, authenticated;
+
+grant select, insert, update, delete
+  on table public.catalog_import_jobs
+  to service_role;
+
+grant select, insert, update, delete
+  on table public.catalog_import_staging
+  to service_role;
 
 create or replace function public.commit_catalog_import(
   p_import_id uuid,
@@ -91,6 +122,14 @@ declare
   v_final_count integer := 0;
   v_result jsonb;
 begin
+  if p_import_id is null then
+    raise exception 'Thiếu p_import_id.';
+  end if;
+
+  if p_actor_user_id is null then
+    raise exception 'Thiếu p_actor_user_id.';
+  end if;
+
   if not exists (
     select 1
     from public.users u
@@ -98,11 +137,11 @@ begin
       and u.active = true
       and u.role = 'ADMIN'
   ) then
-    raise exception 'Chỉ ADMIN mới có quyền cập nhật DATA.';
+    raise exception 'Chỉ ADMIN đang hoạt động mới có quyền cập nhật DATA.';
   end if;
 
   select *
-    into v_job
+  into v_job
   from public.catalog_import_jobs
   where id = p_import_id
   for update;
@@ -112,15 +151,17 @@ begin
   end if;
 
   if v_job.actor_user_id <> p_actor_user_id then
-    raise exception 'Phiên cập nhật DATA không thuộc tài khoản hiện tại.';
+    raise exception 'Phiên cập nhật DATA không thuộc ADMIN hiện tại.';
   end if;
 
   if v_job.status <> 'UPLOADING' then
-    raise exception 'Phiên cập nhật DATA không ở trạng thái có thể xử lý.';
+    raise exception
+      'Phiên cập nhật DATA không ở trạng thái UPLOADING. Trạng thái: %',
+      v_job.status;
   end if;
 
   select count(*)
-    into v_stage_count
+  into v_stage_count
   from public.catalog_import_staging s
   where s.import_id = p_import_id;
 
@@ -131,6 +172,10 @@ begin
       v_job.total_rows;
   end if;
 
+  if v_stage_count = 0 then
+    raise exception 'Phiên import không có dữ liệu.';
+  end if;
+
   if exists (
     select lower(btrim(pc.product_code))
     from public.product_catalog pc
@@ -138,21 +183,24 @@ begin
     having count(*) > 1
   ) then
     raise exception
-      'DATA hiện tại có mã trùng khi bỏ phân biệt hoa/thường. Cần xử lý trước khi import.';
+      'DATA hiện tại có mã trùng khi bỏ phân biệt hoa/thường hoặc khoảng trắng.';
   end if;
 
   update public.catalog_import_jobs
-  set status = 'PROCESSING'
+  set status = 'PROCESSING',
+      result = null,
+      completed_at = null
   where id = p_import_id;
 
   select count(*)
-    into v_existing_count
+  into v_existing_count
   from public.catalog_import_staging s
   where s.import_id = p_import_id
     and exists (
       select 1
       from public.product_catalog pc
-      where lower(btrim(pc.product_code)) = lower(btrim(s.product_code))
+      where lower(btrim(pc.product_code))
+          = lower(btrim(s.product_code))
     );
 
   update public.product_catalog pc
@@ -163,7 +211,8 @@ begin
     active = true
   from public.catalog_import_staging s
   where s.import_id = p_import_id
-    and lower(btrim(pc.product_code)) = lower(btrim(s.product_code))
+    and lower(btrim(pc.product_code))
+        = lower(btrim(s.product_code))
     and (
       pc.product_code is distinct from btrim(s.product_code)
       or pc.product_name is distinct from btrim(s.product_name)
@@ -189,7 +238,8 @@ begin
     and not exists (
       select 1
       from public.product_catalog pc
-      where lower(btrim(pc.product_code)) = lower(btrim(s.product_code))
+      where lower(btrim(pc.product_code))
+          = lower(btrim(s.product_code))
     );
 
   get diagnostics v_catalog_inserted = row_count;
@@ -201,7 +251,15 @@ begin
     product_name = pc.product_name,
     sale_price = pc.sale_price
   from public.product_catalog pc
-  where lower(btrim(p.product_code)) = lower(btrim(pc.product_code))
+  where lower(btrim(p.product_code))
+      = lower(btrim(pc.product_code))
+    and exists (
+      select 1
+      from public.catalog_import_staging s
+      where s.import_id = p_import_id
+        and lower(btrim(s.product_code))
+            = lower(btrim(pc.product_code))
+    )
     and (
       p.catalog_id is distinct from pc.id
       or p.product_code is distinct from pc.product_code
@@ -211,24 +269,16 @@ begin
 
   get diagnostics v_products_synced = row_count;
 
-  delete from public.product_catalog pc
-  where not exists (
-    select 1
-    from public.catalog_import_staging s
-    where s.import_id = p_import_id
-      and lower(btrim(s.product_code)) = lower(btrim(pc.product_code))
-  );
-
-  get diagnostics v_catalog_deleted = row_count;
-
   update public.products p
   set
     catalog_id = null,
     sale_price = null
   where not exists (
     select 1
-    from public.product_catalog pc
-    where lower(btrim(pc.product_code)) = lower(btrim(p.product_code))
+    from public.catalog_import_staging s
+    where s.import_id = p_import_id
+      and lower(btrim(s.product_code))
+          = lower(btrim(p.product_code))
   )
   and (
     p.catalog_id is not null
@@ -237,9 +287,27 @@ begin
 
   get diagnostics v_stale_products_cleared = row_count;
 
+  delete from public.product_catalog pc
+  where not exists (
+    select 1
+    from public.catalog_import_staging s
+    where s.import_id = p_import_id
+      and lower(btrim(s.product_code))
+          = lower(btrim(pc.product_code))
+  );
+
+  get diagnostics v_catalog_deleted = row_count;
+
   select count(*)
-    into v_final_count
+  into v_final_count
   from public.product_catalog;
+
+  if v_final_count <> v_stage_count then
+    raise exception
+      'Số dòng product_catalog sau cập nhật (%) không khớp file mới (%).',
+      v_final_count,
+      v_stage_count;
+  end if;
 
   v_result := jsonb_build_object(
     'totalRows', v_stage_count,
@@ -266,10 +334,10 @@ begin
 end;
 $$;
 
-revoke all on function public.commit_catalog_import(uuid, uuid) from public;
-revoke all on function public.commit_catalog_import(uuid, uuid) from anon;
-revoke all on function public.commit_catalog_import(uuid, uuid) from authenticated;
-grant execute on function public.commit_catalog_import(uuid, uuid) to service_role;
+revoke all
+  on function public.commit_catalog_import(uuid, uuid)
+  from anon, authenticated;
 
-comment on function public.commit_catalog_import(uuid, uuid) is
-'Atomically replaces product_catalog from one ADMIN web import and syncs products name/price to the new DATA.';
+grant execute
+  on function public.commit_catalog_import(uuid, uuid)
+  to service_role;

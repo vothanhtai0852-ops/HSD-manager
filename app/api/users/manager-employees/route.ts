@@ -161,7 +161,7 @@ async function getCurrentManager(): Promise<
       error: NextResponse.json(
         {
           error:
-            "Chức năng này chỉ dành cho Quản Lý.",
+            "Chức năng này chỉ dành cho MANAGER.",
         },
         {
           status: 403,
@@ -295,7 +295,7 @@ export async function GET() {
         return NextResponse.json(
           {
             error:
-              "Không thể tải thông tin Quản Lý.",
+              "Không thể tải thông tin Manager.",
           },
           {
             status: 500,

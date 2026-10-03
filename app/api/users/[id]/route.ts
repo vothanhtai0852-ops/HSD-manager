@@ -1,12 +1,14 @@
-import { NextResponse } from "next/server";
+import {
+  NextResponse,
+} from "next/server";
 import { cookies } from "next/headers";
 
-import { supabaseServer } from "@/lib/supabase-server";
-import { verifySessionToken } from "@/lib/session";
-
-// ======================================================
-// TYPES
-// ======================================================
+import {
+  supabaseServer,
+} from "@/lib/supabase-server";
+import {
+  verifySessionToken,
+} from "@/lib/session";
 
 type UserRole =
   | "ADMIN"
@@ -25,14 +27,12 @@ type TargetUser = {
   username: string;
   role: UserRole;
   active: boolean;
-  auth_mode: "FIXED" | "GOOGLE";
+  auth_mode:
+    | "FIXED"
+    | "GOOGLE";
   parent_id: string | null;
   display_name: string | null;
 };
-
-// ======================================================
-// HELPERS
-// ======================================================
 
 function isValidUuid(
   value: string
@@ -45,7 +45,9 @@ function isValidUuid(
 function normalizeOptionalText(
   value: unknown
 ): string | null {
-  if (typeof value !== "string") {
+  if (
+    typeof value !== "string"
+  ) {
     return null;
   }
 
@@ -55,9 +57,22 @@ function normalizeOptionalText(
   return trimmed || null;
 }
 
-// ======================================================
-// CURRENT USER
-// ======================================================
+function normalizeText(
+  value: unknown
+): string {
+  return typeof value ===
+    "string"
+    ? value.trim()
+    : "";
+}
+
+function isValidUsername(
+  value: string
+): boolean {
+  return /^[A-Za-z0-9._-]{2,50}$/.test(
+    value
+  );
+}
 
 async function getCurrentUser(): Promise<
   | {
@@ -80,7 +95,6 @@ async function getCurrentUser(): Promise<
   if (!token) {
     return {
       user: null,
-
       error: NextResponse.json(
         {
           error:
@@ -101,7 +115,6 @@ async function getCurrentUser(): Promise<
   if (!session) {
     return {
       user: null,
-
       error: NextResponse.json(
         {
           error:
@@ -141,7 +154,6 @@ async function getCurrentUser(): Promise<
 
     return {
       user: null,
-
       error: NextResponse.json(
         {
           error:
@@ -160,7 +172,6 @@ async function getCurrentUser(): Promise<
   ) {
     return {
       user: null,
-
       error: NextResponse.json(
         {
           error:
@@ -176,18 +187,15 @@ async function getCurrentUser(): Promise<
   return {
     user:
       data as CurrentUser,
-
     error: null,
   };
 }
 
-// ======================================================
-// LOAD TARGET USER
-// ======================================================
-
 async function getTargetUser(
   id: string
-): Promise<TargetUser | null> {
+): Promise<
+  TargetUser | null
+> {
   const {
     data,
     error,
@@ -223,11 +231,6 @@ async function getTargetUser(
     | null;
 }
 
-// ======================================================
-// PATCH
-// SỬA TÀI KHOẢN
-// ======================================================
-
 export async function PATCH(
   request: Request,
   context: {
@@ -237,10 +240,6 @@ export async function PATCH(
   }
 ) {
   try {
-    // ==================================================
-    // ID
-    // ==================================================
-
     const { id } =
       await context.params;
 
@@ -256,10 +255,6 @@ export async function PATCH(
       );
     }
 
-    // ==================================================
-    // CURRENT USER
-    // ==================================================
-
     const auth =
       await getCurrentUser();
 
@@ -270,9 +265,24 @@ export async function PATCH(
     const currentUser =
       auth.user;
 
-    // ==================================================
-    // TARGET USER
-    // ==================================================
+    /*
+     * Sửa tài khoản là quyền ADMIN.
+     * MANAGER chỉ gán/gỡ USER bằng endpoint manager-employees.
+     */
+    if (
+      currentUser.role !==
+      "ADMIN"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Chỉ ADMIN mới có quyền sửa tài khoản.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
 
     const targetUser =
       await getTargetUser(id);
@@ -289,50 +299,94 @@ export async function PATCH(
       );
     }
 
-    // ==================================================
-    // PERMISSION
-    // ==================================================
+    const body =
+      await request.json();
 
-    const isAdmin =
-      currentUser.role ===
-      "ADMIN";
+    const username =
+      Object.prototype.hasOwnProperty.call(
+        body,
+        "username"
+      )
+        ? normalizeText(
+            body.username
+          )
+        : targetUser.username;
 
-    const isManager =
-      currentUser.role ===
-      "MANAGER";
-
-    const isManagedEmployee =
-      isManager &&
-      targetUser.role ===
-        "USER" &&
-      targetUser.parent_id ===
-        currentUser.id;
-
-    if (
-      !isAdmin &&
-      !isManagedEmployee
-    ) {
+    if (!username) {
       return NextResponse.json(
         {
           error:
-            "Bạn không có quyền sửa tài khoản này.",
+            "Vui lòng nhập Username.",
         },
         {
-          status: 403,
+          status: 400,
         }
       );
     }
 
-    // ==================================================
-    // BODY
-    // ==================================================
+    if (
+      !isValidUsername(
+        username
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Username chỉ được dùng chữ, số, dấu chấm, gạch dưới, gạch ngang và dài 2-50 ký tự.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
 
-    const body =
-      await request.json();
+    if (
+      username !==
+      targetUser.username
+    ) {
+      const {
+        data: duplicate,
+        error:
+          duplicateError,
+      } = await supabaseServer
+        .from("users")
+        .select("id")
+        .ilike(
+          "username",
+          username
+        )
+        .neq("id", id)
+        .maybeSingle();
 
-    // ==================================================
-    // DISPLAY NAME
-    // ==================================================
+      if (duplicateError) {
+        console.error(
+          "UPDATE_USER_USERNAME_CHECK_ERROR:",
+          duplicateError
+        );
+
+        return NextResponse.json(
+          {
+            error:
+              "Không thể kiểm tra Username.",
+          },
+          {
+            status: 500,
+          }
+        );
+      }
+
+      if (duplicate) {
+        return NextResponse.json(
+          {
+            error:
+              "Username đã tồn tại.",
+          },
+          {
+            status: 409,
+          }
+        );
+      }
+    }
 
     const displayName =
       Object.prototype.hasOwnProperty.call(
@@ -343,10 +397,6 @@ export async function PATCH(
             body.displayName
           )
         : targetUser.display_name;
-
-    // ==================================================
-    // ACTIVE
-    // ==================================================
 
     let active =
       targetUser.active;
@@ -375,10 +425,6 @@ export async function PATCH(
       active =
         body.active;
     }
-
-    // ==================================================
-    // ROLE
-    // ==================================================
 
     let role: UserRole =
       targetUser.role;
@@ -432,29 +478,6 @@ export async function PATCH(
         requestedRole as UserRole;
     }
 
-    // MANAGER chỉ được sửa USER
-    // thuộc quyền của chính mình.
-    // Không được đổi Role.
-
-    if (
-      isManager &&
-      role !== "USER"
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "MANAGER không có quyền thay đổi Role.",
-        },
-        {
-          status: 403,
-        }
-      );
-    }
-
-    // ==================================================
-    // SELF PROTECTION
-    // ==================================================
-
     if (
       currentUser.id ===
       targetUser.id
@@ -472,7 +495,7 @@ export async function PATCH(
       }
 
       if (
-        currentUser.role ===
+        targetUser.role ===
           "ADMIN" &&
         role !== "ADMIN"
       ) {
@@ -488,42 +511,93 @@ export async function PATCH(
       }
     }
 
-    // ==================================================
-    // PARENT MANAGER
-    // ==================================================
+    if (
+      targetUser.role ===
+        "MANAGER" &&
+      role !== "MANAGER"
+    ) {
+      const {
+        count,
+        error:
+          childCountError,
+      } = await supabaseServer
+        .from("users")
+        .select(
+          "id",
+          {
+            count: "exact",
+            head: true,
+          }
+        )
+        .eq(
+          "parent_id",
+          targetUser.id
+        )
+        .eq(
+          "role",
+          "USER"
+        );
+
+      if (childCountError) {
+        console.error(
+          "UPDATE_USER_CHILD_COUNT_ERROR:",
+          childCountError
+        );
+
+        return NextResponse.json(
+          {
+            error:
+              "Không thể kiểm tra nhân viên trực thuộc.",
+          },
+          {
+            status: 500,
+          }
+        );
+      }
+
+      if (
+        (count ?? 0) > 0
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Manager này vẫn đang quản lý nhân viên. Hãy gỡ nhân viên khỏi Manager trước khi đổi Role.",
+          },
+          {
+            status: 409,
+          }
+        );
+      }
+    }
 
     let parentId =
       targetUser.parent_id;
 
-    // Role không phải USER
-    // thì không có Manager.
-
-    if (role !== "USER") {
+    if (
+      role !== "USER"
+    ) {
       parentId = null;
     }
 
-    // ADMIN được quyền đổi Manager
-    // của USER.
-
     if (
-      isAdmin &&
       role === "USER" &&
       Object.prototype.hasOwnProperty.call(
         body,
         "parentUsername"
       )
     ) {
-      const parentUsername =
+      const requestedParent =
         normalizeOptionalText(
           body.parentUsername
         );
 
-      if (!parentUsername) {
+      if (!requestedParent) {
         parentId = null;
       } else {
         const {
           data: manager,
-          error: managerError,
+          error:
+            managerError,
         } = await supabaseServer
           .from("users")
           .select(
@@ -534,9 +608,9 @@ export async function PATCH(
               active
             `
           )
-          .ilike(
+          .eq(
             "username",
-            parentUsername
+            requestedParent
           )
           .maybeSingle();
 
@@ -579,34 +653,19 @@ export async function PATCH(
       }
     }
 
-    // MANAGER không được chuyển
-    // nhân viên của mình sang Manager khác.
-
-    if (isManager) {
-      parentId =
-        currentUser.id;
-    }
-
-    // ==================================================
-    // UPDATE
-    // ==================================================
-
     const {
       data: updatedUser,
       error: updateError,
     } = await supabaseServer
       .from("users")
       .update({
+        username,
         display_name:
           displayName,
-
         role,
-
         active,
-
         parent_id:
           parentId,
-
         updated_at:
           new Date().toISOString(),
       })
@@ -632,6 +691,21 @@ export async function PATCH(
         updateError
       );
 
+      if (
+        updateError.code ===
+        "23505"
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Username đã tồn tại.",
+          },
+          {
+            status: 409,
+          }
+        );
+      }
+
       return NextResponse.json(
         {
           error:
@@ -642,10 +716,6 @@ export async function PATCH(
         }
       );
     }
-
-    // ==================================================
-    // PARENT INFO
-    // ==================================================
 
     let parent:
       | {
@@ -661,7 +731,8 @@ export async function PATCH(
     ) {
       const {
         data: parentUser,
-        error: parentLoadError,
+        error:
+          parentLoadError,
       } = await supabaseServer
         .from("users")
         .select(
@@ -687,50 +758,34 @@ export async function PATCH(
         parent = {
           username:
             parentUser.username,
-
           display_name:
             parentUser.display_name,
         };
       }
     }
 
-    // ==================================================
-    // RESPONSE
-    // ==================================================
-
     return NextResponse.json({
       success: true,
-
       message:
         "Cập nhật tài khoản thành công.",
-
       user: {
         id:
           updatedUser.id,
-
         username:
           updatedUser.username,
-
         displayName:
           updatedUser.display_name,
-
         role:
           updatedUser.role,
-
         active:
           updatedUser.active,
-
         authMode:
           updatedUser.auth_mode,
-
         parentId:
           updatedUser.parent_id,
-
         parent,
-
         createdAt:
           updatedUser.created_at,
-
         updatedAt:
           updatedUser.updated_at,
       },

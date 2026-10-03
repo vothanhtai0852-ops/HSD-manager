@@ -2,6 +2,7 @@ import type {
   Metadata,
   Viewport,
 } from "next";
+import type { ReactNode } from "react";
 
 import "./globals.css";
 
@@ -19,11 +20,36 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+const themeBootScript = `
+(function () {
+  try {
+    var saved = localStorage.getItem("hsd-theme");
+    var theme = saved === "dark" ? "dark" : "light";
+    document.documentElement.dataset.theme = theme;
+  } catch (_) {
+    document.documentElement.dataset.theme = "light";
+  }
+})();
+`;
+
 export default function RootLayout({
   children,
-}: LayoutProps<"/">) {
+}: {
+  children: ReactNode;
+}) {
   return (
-    <html lang="vi">
+    <html
+      lang="vi"
+      suppressHydrationWarning
+    >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: themeBootScript,
+          }}
+        />
+      </head>
+
       <body>{children}</body>
     </html>
   );
