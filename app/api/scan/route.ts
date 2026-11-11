@@ -34,8 +34,11 @@ export async function POST() {
   if (auth.error) return auth.error;
   const { actor } = auth;
   const { data, error } = await supabaseServer.from("scan_sessions").insert({
-    user_id: actor.id, username_snapshot: actor.username, status: "ACTIVE",
-  }).select("id, user_id, username_snapshot, status, created_at, completed_at").single();
+  user_id: actor.id,
+  username: actor.username,
+  username_snapshot: actor.username,
+  status: "ACTIVE",
+}).select("id, user_id, username_snapshot, status, created_at, completed_at").single();
   if (error) {
     console.error("SCAN_CREATE_ERROR", error);
     return NextResponse.json({ error: "Không tạo được phiên kiểm hàng." }, { status: 500 });
