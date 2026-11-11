@@ -1041,3 +1041,88 @@ hr {
     display: block;
   }
 }
+
+/* Module switcher: appended without changing the existing HSD theme. */
+.module-menu { position: relative; z-index: 10010; }
+.module-menu-trigger { display: inline-flex; align-items: center; gap: 8px; min-height: 38px; padding: 8px 12px; color: var(--kk-red); background: #fff; border: 1px solid rgba(255,255,255,.75); border-radius: 8px; font-size: 12px; font-weight: 900; cursor: pointer; }
+.module-menu-trigger:hover { background: var(--kk-yellow); }
+.module-menu-icon { display: inline-flex; width: 17px; flex-direction: column; gap: 3px; }
+.module-menu-icon i { display: block; height: 2px; width: 17px; border-radius: 2px; background: currentColor; }
+.module-menu-dismiss { position: fixed; inset: 0; z-index: -1; width: 100vw; height: 100vh; border: 0; background: transparent; }
+.module-menu-panel { position: absolute; top: calc(100% + 9px); left: 0; width: 230px; padding: 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-lg); }
+.module-menu-heading { padding: 7px 9px 9px; color: var(--text-muted); font-size: 10px; font-weight: 900; letter-spacing: .08em; }
+.module-menu-link { display: flex; flex-direction: column; gap: 2px; padding: 11px 10px; border-radius: 8px; color: var(--foreground); text-decoration: none; }
+.module-menu-link b { font-size: 13px; }
+.module-menu-link small { color: var(--text-secondary); font-size: 11px; font-weight: 700; }
+.module-menu-link:hover, .module-menu-link.active { color: var(--kk-red); background: var(--kk-red-soft); text-decoration: none; }
+
+/* Scan Barcode module */
+.scan-page { max-width: 1500px; }
+.scan-topbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; padding: 17px 20px; border-radius: 14px; color: #fff; background: linear-gradient(90deg, var(--kk-red), var(--kk-red-dark)); box-shadow: var(--shadow-md); }
+.scan-topbar-left { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.scan-topbar-left > div:last-child { min-width: 0; }
+.scan-brand { color: var(--kk-yellow); font-size: 21px; font-weight: 900; letter-spacing: .02em; }
+.scan-module-title { margin-top: 2px; font-size: 16px; font-weight: 900; letter-spacing: .04em; }
+.scan-user { margin-top: 3px; color: rgba(255,255,255,.82); font-size: 12px; }
+.scan-back-link { display: inline-flex; align-items: center; min-height: 38px; padding: 8px 12px; border-radius: 8px; color: var(--kk-red); background: #fff; font-size: 12px; font-weight: 900; text-decoration: none; }
+.scan-card { padding: 20px; }
+.scan-section-heading, .scan-items-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.scan-section-heading h1 { margin: 0 0 4px; font-size: 22px; }
+.scan-section-heading p { margin: 0; color: var(--text-secondary); }
+.scan-status { padding: 6px 11px; border-radius: 999px; font-size: 11px; font-weight: 900; }
+.scan-status.is-active { color: var(--success); background: var(--success-soft); }
+.scan-status.is-complete { color: var(--info); background: var(--info-soft); }
+.scan-toolbar { display: flex; align-items: end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 18px 0; padding: 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
+.scan-session-select { display: flex; flex: 1 1 300px; flex-direction: column; gap: 5px; min-width: 0; font-size: 12px; font-weight: 800; }
+.scan-session-select select { width: 100%; min-width: 0; }
+.scan-toolbar-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+.scan-camera-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(280px, .85fr); gap: 14px; }
+.scan-camera-panel, .scan-manual-panel { min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); }
+.scan-camera-panel { position: relative; overflow: hidden; min-height: 270px; background: #15191f; }
+.scan-video { display: none; width: 100%; max-height: 380px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 7px; }
+.scan-video.active { display: block; }
+.scan-camera-placeholder { display: flex; min-height: 215px; flex-direction: column; align-items: center; justify-content: center; gap: 7px; color: #fff; text-align: center; }
+.scan-camera-symbol { color: var(--kk-yellow); font-size: 54px; line-height: 1; }
+.scan-camera-placeholder span { color: rgba(255,255,255,.65); font-size: 12px; }
+.scan-camera-actions { display: flex; justify-content: center; margin-top: 10px; }
+.scan-manual-panel h2 { margin: 0 0 5px; font-size: 17px; }
+.scan-manual-panel > p { margin: 0 0 13px; color: var(--text-secondary); font-size: 12px; }
+.scan-manual-form { display: flex; gap: 7px; }
+.scan-manual-form input { min-width: 0; flex: 1; }
+.scan-rule-note { display: flex; flex-direction: column; gap: 4px; margin-top: 16px; padding: 11px; border-radius: 8px; background: var(--info-soft); color: var(--info); font-size: 12px; }
+.scan-inline-warning { margin: 9px 0 0; color: #ffe08a; font-size: 12px; }
+.scan-message { margin-top: 13px; padding: 10px 12px; border-radius: 8px; font-weight: 700; font-size: 13px; }
+.scan-message.error { color: var(--danger); background: var(--danger-soft); }
+.scan-message.success { color: var(--success); background: var(--success-soft); }
+.scan-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 17px 0; }
+.scan-summary > div { display: flex; flex-direction: column; gap: 3px; padding: 13px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-soft); }
+.scan-summary span { color: var(--text-secondary); font-size: 11px; font-weight: 700; }
+.scan-summary strong { font-size: 23px; font-weight: 900; }
+.scan-items-heading { margin: 20px 0 10px; }
+.scan-items-heading h2 { margin: 0; font-size: 18px; }
+.scan-items-heading span { color: var(--text-secondary); font-size: 12px; }
+.scan-empty { padding: 28px 12px; border: 1px dashed var(--border-strong); border-radius: 9px; color: var(--text-secondary); text-align: center; }
+.scan-table-wrap { width: 100%; overflow-x: auto; }
+.scan-table { min-width: 760px; }
+.scan-table td { font-size: 13px; }
+.scan-code { white-space: nowrap; font-weight: 800; }
+.scan-quantity-input { width: 90px; min-height: 34px; }
+.scan-note-input { width: 100%; min-width: 140px; min-height: 34px; }
+.scan-row-actions { display: flex; gap: 5px; }
+.scan-row-actions button { min-height: 32px; padding: 5px 8px; font-size: 11px; }
+.scan-row-actions .scan-delete-button { color: var(--danger); }
+@media (max-width: 760px) {
+  .scan-page { padding: 12px; }
+  .scan-card { padding: 13px; }
+  .scan-topbar { padding: 14px; }
+  .scan-topbar-left { align-items: flex-start; }
+  .scan-camera-layout { grid-template-columns: minmax(0, 1fr); }
+  .scan-camera-panel { min-height: 240px; }
+  .scan-toolbar { align-items: stretch; }
+  .scan-toolbar-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .scan-toolbar-actions button { width: 100%; }
+  .scan-manual-form { flex-direction: column; }
+  .scan-manual-form button { width: 100%; }
+  .scan-summary strong { font-size: 20px; }
+  .scan-section-heading h1 { font-size: 19px; }
+}

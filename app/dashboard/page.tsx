@@ -9,6 +9,7 @@ import LogoutButton from "./LogoutButton";
 import ProductsTable from "./ProductsTable";
 import AddProductForm from "./AddProductForm";
 import RenameDisplayNameButton from "./RenameDisplayNameButton";
+import ModuleMenu from "./ModuleMenu";
 
 export default async function DashboardPage() {
   const cookieStore = await cookies();
@@ -168,6 +169,7 @@ export default async function DashboardPage() {
               flex: "0 1 auto",
             }}
           >
+            <ModuleMenu />
             {canManageUsers && (
               <Link
                 href="/dashboard/users"

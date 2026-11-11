@@ -34,3 +34,12 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Scan Barcode - camera requirements
+
+- The Scan Barcode module uses `@zxing/browser` with `@zxing/library` to decode barcodes from the live camera stream. It does not rely on the browser's experimental `BarcodeDetector` API.
+- Supported retail formats include EAN-13, EAN-8, UPC-A, UPC-E, Code 128, Code 39, and ITF.
+- Use the deployed site over **HTTPS** (or `localhost` during local development). Browsers block camera access on ordinary HTTP origins.
+- On iPhone, open the site in Safari and allow Camera permission. On Android, use an up-to-date Chrome browser and allow Camera permission.
+- Camera frames are decoded in the browser; the application sends only the decoded product code to its API for exact catalog lookup.
+- Camera access depends on the device, operating system, browser permission, and browser support. Test on the actual iPhone and Android models before rollout.
