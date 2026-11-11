@@ -809,7 +809,7 @@ export default function ScanBarcodeClient({
         {/* GHI CHÚ VỊ TRÍ DÙNG CHUNG */}
         <div className="scan-location-panel">
           <label>
-            <strong style={{ fontSize: "21px" }}>
+            <strong style={{ fontSize: "16px" }}>
               vị trí Scan
             </strong>
 
@@ -827,11 +827,11 @@ export default function ScanBarcodeClient({
                 changeLocationNote(e.target.value)
               }
               style={{
-                fontSize: "20px",
-                minHeight: "54px",
-                padding: "12px 16px",
-                marginTop: "10px",
-              }}
+                fontSize: "15px",
+        minHeight: "40px",
+        padding: "8px 12px",
+        marginTop: "6px",
+      }}
             />
           </label>
         </div>
