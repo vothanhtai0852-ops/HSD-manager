@@ -18,7 +18,7 @@ export async function POST(request: NextRequest, context: Context) {
     if (access.forbidden) return NextResponse.json({ error: "Không có quyền sửa phiên này." }, { status: 403 });
     if (!access.session) return NextResponse.json({ error: "Không tìm thấy phiên." }, { status: 404 });
     if (access.session.user_id !== auth.actor.id) return NextResponse.json({ error: "Chỉ người tạo phiên mới được quét." }, { status: 403 });
-    if (access.session.status !== "ACTIVE") return NextResponse.json({ error: "Phiên đã lưu, không thể thêm mã." }, { status: 409 });
+    if (access.session.status !== "DRAFT") return NextResponse.json({ error: "Phiên đã lưu, không thể thêm mã." }, { status: 409 });
 
     const { data, error } = await supabaseServer.rpc("scan_increment_item", {
       p_session_id: sessionId, p_actor_user_id: auth.actor.id, p_product_code: productCode,
