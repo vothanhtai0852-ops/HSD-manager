@@ -37,7 +37,7 @@ export async function POST() {
   user_id: actor.id,
   username: actor.username,
   username_snapshot: actor.username,
-  status: "ACTIVE",
+  status: "DRAFT",
 }).select("id, user_id, username_snapshot, status, created_at, completed_at").single();
   if (error) {
     console.error("SCAN_CREATE_ERROR", error);
