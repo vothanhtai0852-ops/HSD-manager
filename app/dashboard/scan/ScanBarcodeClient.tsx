@@ -5,7 +5,7 @@ import Link from "next/link";
 import ModuleMenu from "../ModuleMenu";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 
-type ScanSession = { id: string; user_id: string; username_snapshot: string; status: "ACTIVE" | "COMPLETED"; created_at: string; completed_at: string | null };
+type ScanSession = { id: string; user_id: string; username_snapshot: string; status: "DRAFT" | "COMPLETED"; created_at: string; completed_at: string | null };
 type ScanItem = { id: string; product_code: string; product_name: string; quantity: number; note: string | null; created_at: string; updated_at: string };
 type CameraControls = { stop: () => void };
 
@@ -97,7 +97,7 @@ export default function ScanBarcodeClient({ username, userId }: { username: stri
 
   const addCode = useCallback(async (raw: string) => {
     const code = raw.trim();
-    if (!code || !session || session.status !== "ACTIVE" || session.user_id !== userId) return;
+    if (!code || !session || session.status !== "DRAFT" || session.user_id !== userId) return;
     scanQueueRef.current.push(code);
     if (processingRef.current) return;
     processingRef.current = true;
@@ -219,7 +219,7 @@ export default function ScanBarcodeClient({ username, userId }: { username: stri
   }
 
   async function completeSession() {
-    if (!session || session.status !== "ACTIVE" || !window.confirm("Lưu và khóa phiên kiểm hàng này?")) return;
+    if (!session || session.status !== "DRAFT" || !window.confirm("Lưu và khóa phiên kiểm hàng này?")) return;
     setBusy(true);
     try {
       const response = await fetch(`/api/scan/${session.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "COMPLETE" }) });
@@ -230,7 +230,7 @@ export default function ScanBarcodeClient({ username, userId }: { username: stri
   }
 
   async function newSession() {
-    const activeOwnSession = sessions.find((row) => row.user_id === userId && row.status === "ACTIVE");
+    const activeOwnSession = sessions.find((row) => row.user_id === userId && row.status === "DRAFT");
     if (activeOwnSession && !window.confirm("Tạo phiên mới sẽ lưu và khóa phiên đang kiểm hiện tại. Tiếp tục?")) return;
     if (activeOwnSession) {
       const response = await fetch(`/api/scan/${activeOwnSession.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "COMPLETE" }) });
@@ -257,19 +257,19 @@ export default function ScanBarcodeClient({ username, userId }: { username: stri
       <Link href="/dashboard" className="scan-back-link">QUẢN LÍ HSD</Link>
     </header>
     <section className="scan-card">
-      <div className="scan-section-heading"><div><h1>Quét mã sản phẩm</h1><p>Tra cứu chính xác trong DATA. Quét trùng mã tự cộng số lượng. Hỗ trợ camera iPhone và Android.</p></div><span className={`scan-status ${session?.status === "ACTIVE" ? "is-active" : "is-complete"}`}>{session?.status === "ACTIVE" ? "ĐANG KIỂM" : "ĐÃ LƯU"}</span></div>
+      <div className="scan-section-heading"><div><h1>Quét mã sản phẩm</h1><p>Tra cứu chính xác trong DATA. Quét trùng mã tự cộng số lượng. Hỗ trợ camera iPhone và Android.</p></div><span className={`scan-status ${session?.status === "DRAFT" ? "is-active" : "is-complete"}`}>{session?.status === "DRAFT" ? "ĐANG KIỂM" : "ĐÃ LƯU"}</span></div>
       <div className="scan-toolbar">
-        <label className="scan-session-select"><span>Phiên kiểm hàng / lịch sử</span><select value={session?.id || ""} disabled={busy} onChange={(e) => { stopCamera(); loadSession(e.target.value).catch((err) => setError(err.message)); }}>{sessions.map((row) => <option key={row.id} value={row.id}>{dateLabel(row.created_at)} · {row.username_snapshot} · {row.status === "ACTIVE" ? "Đang kiểm" : "Đã lưu"}</option>)}</select></label>
-        <div className="scan-toolbar-actions"><button type="button" onClick={() => newSession().catch((err) => setError(err.message))} disabled={busy}>+ Phiên mới</button><button type="button" onClick={() => downloadExcel().catch((err) => setError(err.message))} disabled={!session || items.length === 0}>Xuất Excel</button>{session?.status === "ACTIVE" && session.user_id === userId && <button type="button" className="kk-button-primary" onClick={completeSession} disabled={busy}>Lưu phiên</button>}</div>
+        <label className="scan-session-select"><span>Phiên kiểm hàng / lịch sử</span><select value={session?.id || ""} disabled={busy} onChange={(e) => { stopCamera(); loadSession(e.target.value).catch((err) => setError(err.message)); }}>{sessions.map((row) => <option key={row.id} value={row.id}>{dateLabel(row.created_at)} · {row.username_snapshot} · {row.status === "DRAFT" ? "Đang kiểm" : "Đã lưu"}</option>)}</select></label>
+        <div className="scan-toolbar-actions"><button type="button" onClick={() => newSession().catch((err) => setError(err.message))} disabled={busy}>+ Phiên mới</button><button type="button" onClick={() => downloadExcel().catch((err) => setError(err.message))} disabled={!session || items.length === 0}>Xuất Excel</button>{session?.status === "DRAFT" && session.user_id === userId && <button type="button" className="kk-button-primary" onClick={completeSession} disabled={busy}>Lưu phiên</button>}</div>
       </div>
       <div className="scan-camera-layout">
-        <div className="scan-camera-panel"><video ref={videoRef} className={cameraOn ? "scan-video active" : "scan-video"} muted playsInline />{!cameraOn && <div className="scan-camera-placeholder"><div className="scan-camera-symbol">▦</div><strong>Camera quét mã vạch</strong><span>Camera sau · iPhone Safari · Android Chrome</span></div>}<div className="scan-camera-actions">{!cameraOn ? <button type="button" className="kk-button-primary" onClick={startCamera} disabled={!session || session.status !== "ACTIVE" || session.user_id !== userId}>Mở camera</button> : <button type="button" onClick={stopCamera}>Tắt camera</button>}</div>{cameraError && <p className="scan-inline-warning">{cameraError}</p>}</div>
-        <div className="scan-manual-panel"><h2>Nhập mã thủ công</h2><p>Dùng khi camera không hỗ trợ hoặc mã vạch bị hỏng.</p><form className="scan-manual-form" onSubmit={submitManual}><input value={manualCode} onChange={(e) => setManualCode(e.target.value)} placeholder="Nhập / dán mã sản phẩm" autoComplete="off" disabled={!session || session.status !== "ACTIVE" || session.user_id !== userId || busy} /><button type="submit" className="kk-button-primary" disabled={!manualCode.trim() || !session || session.status !== "ACTIVE" || session.user_id !== userId || busy}>Thêm mã</button></form><div className="scan-rule-note"><b>Quy tắc tra cứu</b><span>Chỉ khớp chính xác mã trong DATA. Không có trong DATA thì không tự tạo sản phẩm.</span></div></div>
+        <div className="scan-camera-panel"><video ref={videoRef} className={cameraOn ? "scan-video active" : "scan-video"} muted playsInline />{!cameraOn && <div className="scan-camera-placeholder"><div className="scan-camera-symbol">▦</div><strong>Camera quét mã vạch</strong><span>Camera sau · iPhone Safari · Android Chrome</span></div>}<div className="scan-camera-actions">{!cameraOn ? <button type="button" className="kk-button-primary" onClick={startCamera} disabled={!session || session.status !== "DRAFT" || session.user_id !== userId}>Mở camera</button> : <button type="button" onClick={stopCamera}>Tắt camera</button>}</div>{cameraError && <p className="scan-inline-warning">{cameraError}</p>}</div>
+        <div className="scan-manual-panel"><h2>Nhập mã thủ công</h2><p>Dùng khi camera không hỗ trợ hoặc mã vạch bị hỏng.</p><form className="scan-manual-form" onSubmit={submitManual}><input value={manualCode} onChange={(e) => setManualCode(e.target.value)} placeholder="Nhập / dán mã sản phẩm" autoComplete="off" disabled={!session || session.status !== "DRAFT" || session.user_id !== userId || busy} /><button type="submit" className="kk-button-primary" disabled={!manualCode.trim() || !session || session.status !== "DRAFT" || session.user_id !== userId || busy}>Thêm mã</button></form><div className="scan-rule-note"><b>Quy tắc tra cứu</b><span>Chỉ khớp chính xác mã trong DATA. Không có trong DATA thì không tự tạo sản phẩm.</span></div></div>
       </div>
       {error && <div className="scan-message error">{error}</div>}{message && <div className="scan-message success">{message}</div>}
       <div className="scan-summary"><div><span>Mã sản phẩm</span><strong>{items.length}</strong></div><div><span>Tổng số lượng</span><strong>{total.toLocaleString("vi-VN")}</strong></div></div>
       <div className="scan-items-heading"><h2>Danh sách đã quét</h2><span>{items.length} mã</span></div>
-      {items.length === 0 ? <div className="scan-empty">Chưa có sản phẩm. Bật camera hoặc nhập mã để bắt đầu.</div> : <div className="scan-table-wrap"><table className="scan-table"><thead><tr><th>Mã SP</th><th>Tên sản phẩm</th><th>Số lượng</th><th>Ghi chú</th><th>Thao tác</th></tr></thead><tbody>{items.map((item) => { const edit = edits[item.id] || { quantity: String(item.quantity), note: item.note || "" }; return <tr key={item.id}><td className="scan-code">{item.product_code}</td><td>{item.product_name}</td><td><input className="scan-quantity-input" type="number" min="1" max="1000000" step="1" value={edit.quantity} disabled={session?.status !== "ACTIVE" || session.user_id !== userId} onChange={(e) => setEdits((old) => ({ ...old, [item.id]: { ...edit, quantity: e.target.value } }))} /></td><td><input className="scan-note-input" value={edit.note} maxLength={500} placeholder="Ghi chú..." disabled={session?.status !== "ACTIVE" || session.user_id !== userId} onChange={(e) => setEdits((old) => ({ ...old, [item.id]: { ...edit, note: e.target.value } }))} /></td><td>{session?.status === "ACTIVE" && session.user_id === userId && <div className="scan-row-actions"><button type="button" onClick={() => saveItem(item).catch((err) => setError(err.message))}>Lưu</button><button type="button" className="scan-delete-button" onClick={() => deleteItem(item).catch((err) => setError(err.message))}>Xóa</button></div>}</td></tr>; })}</tbody></table></div>}
+      {items.length === 0 ? <div className="scan-empty">Chưa có sản phẩm. Bật camera hoặc nhập mã để bắt đầu.</div> : <div className="scan-table-wrap"><table className="scan-table"><thead><tr><th>Mã SP</th><th>Tên sản phẩm</th><th>Số lượng</th><th>Ghi chú</th><th>Thao tác</th></tr></thead><tbody>{items.map((item) => { const edit = edits[item.id] || { quantity: String(item.quantity), note: item.note || "" }; return <tr key={item.id}><td className="scan-code">{item.product_code}</td><td>{item.product_name}</td><td><input className="scan-quantity-input" type="number" min="1" max="1000000" step="1" value={edit.quantity} disabled={session?.status !== "DRAFT" || session.user_id !== userId} onChange={(e) => setEdits((old) => ({ ...old, [item.id]: { ...edit, quantity: e.target.value } }))} /></td><td><input className="scan-note-input" value={edit.note} maxLength={500} placeholder="Ghi chú..." disabled={session?.status !== "DRAFT" || session.user_id !== userId} onChange={(e) => setEdits((old) => ({ ...old, [item.id]: { ...edit, note: e.target.value } }))} /></td><td>{session?.status === "DRAFT" && session.user_id === userId && <div className="scan-row-actions"><button type="button" onClick={() => saveItem(item).catch((err) => setError(err.message))}>Lưu</button><button type="button" className="scan-delete-button" onClick={() => deleteItem(item).catch((err) => setError(err.message))}>Xóa</button></div>}</td></tr>; })}</tbody></table></div>}
     </section>
   </>;
 }
