@@ -64,7 +64,7 @@ export default function ScanBarcodeClient({ username, userId }: { username: stri
       try {
         const list = await loadSessions();
         if (cancelled) return;
-        const ownActive = list.find((row) => row.status === "ACTIVE" && row.user_id === userId);
+        const ownActive = list.find((row) => row.status === "DRAFT" && row.user_id === userId);
         if (ownActive) await loadSession(ownActive.id);
         else await createSession();
       } catch (err) {
