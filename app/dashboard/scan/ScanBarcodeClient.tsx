@@ -63,6 +63,7 @@ export default function ScanBarcodeClient({
   >({});
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
   const cameraControlsRef = useRef<CameraControls | null>(null);
   const scanResetTimerRef = useRef<ReturnType<typeof setInterval> | null>(
     null
@@ -194,12 +195,81 @@ export default function ScanBarcodeClient({
 
       const stream = videoRef.current?.srcObject as MediaStream | null;
       stream?.getTracks().forEach((track) => track.stop());
+
+      void audioContextRef.current?.close();
+      audioContextRef.current = null;
     },
     []
   );
 
-  // Cập nhật ref đồng bộ để mỗi lượt quét lấy đúng ghi chú
-  // tại thời điểm người dùng quét mã.
+  // Chuẩn bị âm thanh sau thao tác của người dùng.
+  const prepareAudio = useCallback(async () => {
+    if (!audioContextRef.current) {
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as typeof window & {
+          webkitAudioContext?: typeof AudioContext;
+        }).webkitAudioContext;
+
+      if (!AudioContextClass) return;
+
+      audioContextRef.current = new AudioContextClass();
+    }
+
+    if (audioContextRef.current.state === "suspended") {
+      await audioContextRef.current.resume();
+    }
+  }, []);
+
+  // Thành công: một tiếng bíp cao.
+  // Thất bại: hai tiếng bíp trầm.
+  const playScanSound = useCallback((success: boolean) => {
+    const context = audioContextRef.current;
+
+    if (!context || context.state !== "running") return;
+
+    const playTone = (
+      frequency: number,
+      startTime: number,
+      duration: number
+    ) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(
+        frequency,
+        startTime
+      );
+
+      gain.gain.setValueAtTime(0.0001, startTime);
+      gain.gain.exponentialRampToValueAtTime(
+        0.15,
+        startTime + 0.01
+      );
+      gain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        startTime + duration
+      );
+
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+
+      oscillator.start(startTime);
+      oscillator.stop(startTime + duration + 0.02);
+    };
+
+    const now = context.currentTime;
+
+    if (success) {
+      playTone(1100, now, 0.13);
+    } else {
+      playTone(420, now, 0.16);
+      playTone(320, now + 0.22, 0.16);
+    }
+  }, []);
+
+  // Cập nhật ghi chú vị trí đồng bộ.
   const changeLocationNote = useCallback((value: string) => {
     locationNoteRef.current = value;
     setLocationNote(value);
@@ -218,8 +288,6 @@ export default function ScanBarcodeClient({
         return;
       }
 
-      // Chụp lại ghi chú vị trí ngay lúc nhận mã.
-      // Không đọc lại state khi mã được lấy khỏi hàng đợi.
       const capturedLocationNote = locationNoteRef.current.trim();
 
       scanQueueRef.current.push({
@@ -263,6 +331,8 @@ export default function ScanBarcodeClient({
 
             const item = json.item as ScanItem;
 
+            playScanSound(true);
+
             setItems((old) => {
               const index = old.findIndex(
                 (row) => row.id === item.id
@@ -288,6 +358,8 @@ export default function ScanBarcodeClient({
               `Đã quét ${item.product_code}, số lượng ${item.quantity}.`
             );
           } catch (err) {
+            playScanSound(false);
+
             setError(
               err instanceof Error
                 ? err.message
@@ -300,7 +372,7 @@ export default function ScanBarcodeClient({
         setBusy(false);
       }
     },
-    [session, userId]
+    [session, userId, playScanSound]
   );
 
   const startCamera = useCallback(async () => {
@@ -328,6 +400,8 @@ export default function ScanBarcodeClient({
     }
 
     try {
+      await prepareAudio().catch(() => {});
+
       lastCodeRef.current = "";
       lastSeenRef.current = 0;
 
@@ -408,7 +482,7 @@ export default function ScanBarcodeClient({
         );
       }
     }
-  }, [addCode, stopCamera]);
+  }, [addCode, stopCamera, prepareAudio]);
 
   async function submitManual(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -416,6 +490,7 @@ export default function ScanBarcodeClient({
     const code = manualCode.trim();
     if (!code) return;
 
+    await prepareAudio().catch(() => {});
     await addCode(code);
     setManualCode("");
   }
@@ -653,11 +728,6 @@ export default function ScanBarcodeClient({
         <div className="scan-section-heading">
           <div>
             <h1>Quét mã sản phẩm</h1>
-            <p>
-              Tra cứu chính xác trong DATA. Quét trùng mã
-              cùng vị trí tự cộng số lượng. Hỗ trợ camera
-              iPhone và Android.
-            </p>
           </div>
 
           <span
@@ -740,12 +810,15 @@ export default function ScanBarcodeClient({
         {/* GHI CHÚ VỊ TRÍ DÙNG CHUNG */}
         <div className="scan-location-panel">
           <label>
-            <strong>Ghi chú vị trí quét</strong>
+            <strong style={{ fontSize: "21px" }}>
+              Ghi chú vị trí quét
+            </strong>
+
             <input
               type="text"
               value={locationNote}
               maxLength={500}
-              placeholder="Ví dụ: Kệ A, tầng 2..."
+              placeholder=""
               disabled={
                 !session ||
                 session.status !== "DRAFT" ||
@@ -754,24 +827,20 @@ export default function ScanBarcodeClient({
               onChange={(e) =>
                 changeLocationNote(e.target.value)
               }
+              style={{
+                fontSize: "20px",
+                minHeight: "54px",
+                padding: "12px 16px",
+                marginTop: "10px",
+              }}
             />
           </label>
-
-          <p>
-            Ghi chú này sẽ tự động áp dụng cho các mã quét
-            tiếp theo. Khi thay đổi vị trí, những mã đã quét
-            trước đó vẫn giữ nguyên ghi chú cũ.
-          </p>
         </div>
 
         <div className="scan-camera-layout">
-          {/* NHẬP MÃ THỦ CÔNG - ĐƯA LÊN TRƯỚC */}
+          {/* NHẬP MÃ THỦ CÔNG */}
           <div className="scan-manual-panel">
             <h2>Nhập mã thủ công</h2>
-            <p>
-              Dùng khi camera không hỗ trợ hoặc mã vạch
-              bị hỏng.
-            </p>
 
             <form
               className="scan-manual-form"
@@ -806,14 +875,6 @@ export default function ScanBarcodeClient({
                 Thêm mã
               </button>
             </form>
-
-            <div className="scan-rule-note">
-              <b>Quy tắc tra cứu</b>
-              <span>
-                Chỉ khớp chính xác mã trong DATA. Không có
-                trong DATA thì không tự tạo sản phẩm.
-              </span>
-            </div>
           </div>
 
           {/* CAMERA QUÉT MÃ */}
@@ -833,9 +894,6 @@ export default function ScanBarcodeClient({
               <div className="scan-camera-placeholder">
                 <div className="scan-camera-symbol">▦</div>
                 <strong>Camera quét mã vạch</strong>
-                <span>
-                  Camera sau · iPhone Safari · Android Chrome
-                </span>
               </div>
             )}
 
