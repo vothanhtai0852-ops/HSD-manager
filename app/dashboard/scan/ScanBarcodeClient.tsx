@@ -719,9 +719,8 @@ export default function ScanBarcodeClient({
           </div>
         </div>
 
-        <Link href="/dashboard" className="scan-back-link">
-          QUẢN LÍ HSD
-        </Link>
+       
+        
       </header>
 
       <section className="scan-card">
@@ -811,7 +810,7 @@ export default function ScanBarcodeClient({
         <div className="scan-location-panel">
           <label>
             <strong style={{ fontSize: "21px" }}>
-              Ghi chú vị trí quét
+              vị trí Scan
             </strong>
 
             <input
@@ -943,7 +942,7 @@ export default function ScanBarcodeClient({
 
         <div className="scan-summary">
           <div>
-            <span>Dòng sản phẩm / vị trí</span>
+            <span>Dòng sản phẩm</span>
             <strong>{items.length}</strong>
           </div>
 
@@ -970,7 +969,7 @@ export default function ScanBarcodeClient({
             <table className="scan-table">
               <thead>
                 <tr>
-                  <th>Mã SP</th>
+                  <th>Mã sản phẩm</th>
                   <th>Tên sản phẩm</th>
                   <th>Số lượng</th>
                   <th>Ghi chú vị trí</th>
