@@ -730,7 +730,8 @@ export default function ScanBarcodeClient({
     }
   }
 
- 
+  
+
 async function downloadExcel() {
   if (!session) return;
 
@@ -740,56 +741,55 @@ async function downloadExcel() {
   );
 
   if (!response.ok) {
-    const json = await response.json().catch(() => ({}));
+    const raw = await response.text();
+    let message = raw;
+
+    try {
+      const json = JSON.parse(raw);
+      message = json.error || raw;
+    } catch {
+      // Giữ nguyên nội dung lỗi từ server.
+    }
 
     throw new Error(
-      json.error || "Không xuất được Excel."
+      message || `Không xuất được Excel (HTTP ${response.status}).`
+    );
+  }
+
+  // Lấy tên file chính thức từ API.
+  // Tuyệt đối không tự lấy tên người đang đăng nhập.
+  const disposition =
+    response.headers.get("Content-Disposition") || "";
+
+  const filenameMatch = disposition.match(
+    /filename\s*=\s*"?([^";]+)"?/i
+  );
+
+  const filename = filenameMatch?.[1]?.trim();
+
+  if (!filename || !filename.startsWith("SCAN_BARCODE_")) {
+    throw new Error(
+      "API chưa trả tên file theo chủ nhân phiên."
     );
   }
 
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
 
-  const a = document.createElement("a");
-  a.href = url;
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
 
-  // Lấy tên file do API trả về.
-  const disposition =
-    response.headers.get("Content-Disposition") || "";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 
-  const filenameMatch = disposition.match(
-    /filename="([^"]+)"/i
+  window.setTimeout(
+    () => URL.revokeObjectURL(url),
+    1000
   );
-
-  // Dự phòng: lấy username_snapshot của phiên.
-  const ownerUsername =
-    session.username_snapshot || "user";
-
-  const safeUsername = String(ownerUsername)
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9_-]+/g, "_")
-    .replace(/^_+|_+$/g, "") || "user";
-
-  const exportDate = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Ho_Chi_Minh",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  })
-    .format(new Date())
-    .replaceAll("-", "");
-
-  a.download =
-    filenameMatch?.[1] ||
-    `SCAN_BARCODE_${safeUsername}_${exportDate}.xlsx`;
-
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-
-  URL.revokeObjectURL(url);
 }
+
 
 
   const displayedItems: ScanItem[] = [
