@@ -1,35 +1,26 @@
-# SCAN BARCODE - ghi chú nâng cấp
+# KINGKONG MART - Scan Barcode performance update
 
-Bản này cập nhật giao diện Scan Barcode, xử lý quét liên tục và tối ưu một số request.
+## Changes included
 
-## Thay đổi chính
+- Camera area is collapsed by default and is mounted visibly only after pressing **Mở camera**.
+- ZXing is restricted to common retail barcode formats and configured for 100 ms success/attempt intervals, with a 960x540 preferred camera stream to reduce per-frame decoding work.
+- Scan results and quantity totals update optimistically as soon as a code is recognized; Supabase writes continue through an ordered queue so rapid scans are not blocked by each response.
+- Repeated identical frames are debounced, while the same barcode can be recognized again after it leaves the camera view.
+- Manual code input receives focus when an editable session is opened and regains focus after manual submission and camera start/stop. The input stays enabled while queued writes are running.
+- Success/failure audio gain is raised from 0.15 to 0.45 (three times the previous Web Audio gain setting). Actual audible volume is still subject to device and browser volume controls.
+- Quantity edits save automatically when the input loses focus. The row-level **Lưu** button is removed; **Xóa** remains.
+- Scan success/error notices and module-switch notices appear centered in the page.
+- Scan increment API no longer performs separate user/session lookups before the database RPC; the RPC performs the active-user and session-owner checks atomically.
+- Scan history/detail validation reads and the dashboard alert/product batch reads are parallelized where the required scope is known.
+- No database migration is added by this update.
 
-- Camera thu gọn mặc định, chỉ mở sau khi nhấn **Mở camera**.
-- Ô nhập mã thủ công được tự động focus và được focus lại sau khi gửi mã.
-- Số lượng được cập nhật lạc quan ngay trên giao diện trong lúc API đang ghi dữ liệu; API vẫn ghi tuần tự để tránh sai số khi quét trùng.
-- Bộ giải mã ZXing được cấu hình thử quét theo chu kỳ ngắn hơn; tốc độ thực tế vẫn phụ thuộc camera, thiết bị, ánh sáng và mạng.
-- Gain âm thanh được tăng từ 0.15 lên 0.45 (3 lần biên độ gain trong Web Audio; âm lượng cảm nhận không đảm bảo tăng đúng 3 lần).
-- Bỏ nút Lưu từng dòng; số lượng được lưu khi rời ô nhập.
-- Thông báo thao tác và thông báo chuyển module được đưa vào giữa giao diện.
-- Tối ưu một số request của API products và Scan Barcode.
+## Apply
 
-## Quan trọng: đồng bộ database
+1. Back up the current project folder.
+2. Extract this ZIP over a copy of the current project, preserving your local `.env` / `.env.local` files. They are intentionally not included.
+3. Run `npm ci` if dependencies are not already installed.
+4. Run `npm run build` before deploying.
 
-Source cũ chứa migration `009_scan_barcode.sql` không còn khớp API hiện tại: trạng thái trong migration là `ACTIVE`, bảng thiếu `username` và `location_note`, còn RPC thiếu tham số vị trí. API hiện tại dùng `DRAFT`, `username`, `location_note` và RPC bốn tham số.
+## Verification note
 
-Trước khi deploy bản source này, nếu database hiện tại được tạo từ migration 009 cũ, hãy chạy đúng một lần file:
-
-`supabase/migrations/010_scan_barcode_runtime_alignment.sql`
-
-File 010 chuyển các phiên `ACTIVE` cũ sang `DRAFT`, bổ sung các cột cần thiết và thay RPC bằng phiên bản khớp API. Không chạy lặp lại file 010 sau khi đã áp dụng thành công.
-
-## Deploy
-
-1. Sao lưu source hiện tại và database trước khi cập nhật.
-2. Giải nén ZIP đè lên thư mục dự án, giữ `.env.local` và `.git` hiện có.
-3. Kiểm tra / chạy migration 010 trong Supabase SQL Editor như hướng dẫn ở trên.
-4. Chạy `npm ci`, `npm run build`.
-5. Commit và push lên nhánh đang liên kết với Vercel; chờ deployment mới báo Ready.
-6. Mở website bằng hard refresh (Ctrl+Shift+R).
-
-Mục tiêu chu kỳ giải mã camera là khoảng 100 ms; không thể cam kết mọi lượt quét/API hoàn tất dưới 500 ms trên mọi thiết bị và mạng. Giao diện hiển thị mã/số lượng tạm ngay khi nhận diện, còn trạng thái lưu bền vững chỉ được xác nhận khi API thành công.
+All 55 TypeScript/TSX source files passed a TypeScript transpile/syntax check in the preparation environment. A full Next.js production build could not be run here because the dependency installation did not complete and the local `next` executable was unavailable. Camera timing and the 500 ms experience must still be measured on the actual iPhone/Android devices and network/Supabase environment; no browser-side code can guarantee every server request will finish under 500 ms.
