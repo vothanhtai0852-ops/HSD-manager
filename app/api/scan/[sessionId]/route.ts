@@ -1,12 +1,90 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
-import { getScanTokenActor, isUuid } from "@/lib/scan";
+import { getScanSession, getScanTokenActor, getScanActor, isUuid } from "@/lib/scan";
+
+// This route must expose GET (session detail) and PATCH (complete session).
+// Force a server-rendered, uncached route so deployments do not reuse stale handlers.
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 type Context = { params: Promise<{ sessionId: string }> };
 
-export async function POST(request: NextRequest, context: Context) {
+export async function GET(_request: NextRequest, context: Context) {
   const auth = await getScanTokenActor();
+  if (auth.error) return auth.error;
+
+  const { sessionId } = await context.params;
+
+  if (!isUuid(sessionId)) {
+    return NextResponse.json(
+      { error: "Mã phiên không hợp lệ." },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const [currentUserResult, access] = await Promise.all([
+      supabaseServer.from("users").select("id, role, active")
+        .eq("id", auth.actor.id).maybeSingle(),
+      getScanSession(auth.actor, sessionId),
+    ]);
+
+    if (currentUserResult.error) {
+      throw currentUserResult.error;
+    }
+    if (!currentUserResult.data?.active) {
+      return NextResponse.json({ error: "Tài khoản không hoạt động." }, { status: 401 });
+    }
+    if (currentUserResult.data.role !== auth.actor.role) {
+      return NextResponse.json({ error: "Quyền tài khoản đã thay đổi. Hãy đăng nhập lại." }, { status: 401 });
+    }
+
+    if (access.forbidden) {
+      return NextResponse.json(
+        { error: "Không có quyền xem phiên này." },
+        { status: 403 }
+      );
+    }
+
+    if (!access.session) {
+      return NextResponse.json(
+        { error: "Không tìm thấy phiên." },
+        { status: 404 }
+      );
+    }
+
+    const { data, error } = await supabaseServer
+      .from("scan_items")
+      .select(
+        "id, product_code, product_name, quantity, note, location_note, created_at, updated_at"
+      )
+      .eq("session_id", sessionId)
+      .order("created_at", { ascending: true });
+
+    if (error) throw error;
+
+    return NextResponse.json(
+      {
+        session: access.session,
+        items: data || [],
+      },
+      {
+        headers: { "Cache-Control": "private, no-store" },
+      }
+    );
+  } catch (error) {
+    console.error("SCAN_GET_ERROR", error);
+
+    return NextResponse.json(
+      { error: "Không tải được chi tiết phiên." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: NextRequest, context: Context) {
+  const auth = await getScanActor();
   if (auth.error) return auth.error;
 
   const { sessionId } = await context.params;
@@ -20,84 +98,66 @@ export async function POST(request: NextRequest, context: Context) {
 
   const body = await request.json().catch(() => ({}));
 
-  const productCode =
-    typeof body.productCode === "string" ? body.productCode.trim() : "";
-
-  const locationNote =
-    typeof body.locationNote === "string" ? body.locationNote.trim() : "";
-
-  if (!productCode || productCode.length > 128) {
+  if (body.action !== "COMPLETE") {
     return NextResponse.json(
-      { error: "Mã sản phẩm không hợp lệ." },
-      { status: 400 }
-    );
-  }
-
-  if (locationNote.length > 500) {
-    return NextResponse.json(
-      { error: "Ghi chú vị trí tối đa 500 ký tự." },
+      { error: "Thao tác không hợp lệ." },
       { status: 400 }
     );
   }
 
   try {
-    // Ownership, active-user and active-session checks are performed atomically
-    // inside scan_increment_item, avoiding separate SELECT requests here.
-    const { data, error } = await supabaseServer.rpc(
-      "scan_increment_item",
-      {
-        p_session_id: sessionId,
-        p_actor_user_id: auth.actor.id,
-        p_product_code: productCode,
-        p_location_note: locationNote,
-      }
-    );
+    const access = await getScanSession(auth.actor, sessionId);
 
-    if (error) {
-      if (error.message.includes("PRODUCT_NOT_FOUND")) {
-        return NextResponse.json(
-          { error: "Không tìm thấy mã này trong DATA." },
-          { status: 404 }
-        );
-      }
-
-      if (error.message.includes("SESSION_NOT_ACTIVE")) {
-        return NextResponse.json(
-          { error: "Phiên không tồn tại, không thuộc tài khoản này hoặc đã lưu." },
-          { status: 409 }
-        );
-      }
-
-      if (error.message.includes("ACTOR_NOT_ACTIVE")) {
-        return NextResponse.json(
-          { error: "Tài khoản không hoạt động." },
-          { status: 401 }
-        );
-      }
-
-      if (error.message.includes("LOCATION_NOTE_TOO_LONG")) {
-        return NextResponse.json(
-          { error: "Ghi chú vị trí tối đa 500 ký tự." },
-          { status: 400 }
-        );
-      }
-
-      console.error("SCAN_INCREMENT_ERROR", error);
-
+    if (access.forbidden) {
       return NextResponse.json(
-        { error: "Không thể cập nhật số lượng." },
-        { status: 500 }
+        { error: "Không có quyền lưu phiên này." },
+        { status: 403 }
       );
     }
 
-    return NextResponse.json({
-      item: Array.isArray(data) ? data[0] : data,
-    });
+    if (!access.session) {
+      return NextResponse.json(
+        { error: "Không tìm thấy phiên." },
+        { status: 404 }
+      );
+    }
+
+    if (access.session.user_id !== auth.actor.id) {
+      return NextResponse.json(
+        { error: "Chỉ người tạo phiên mới được lưu." },
+        { status: 403 }
+      );
+    }
+
+    if (access.session.status !== "DRAFT") {
+      return NextResponse.json(
+        { error: "Phiên đã được lưu." },
+        { status: 409 }
+      );
+    }
+
+    const { data, error } = await supabaseServer
+      .from("scan_sessions")
+      .update({
+        status: "COMPLETED",
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", sessionId)
+      .eq("user_id", auth.actor.id)
+      .eq("status", "DRAFT")
+      .select(
+        "id, user_id, username_snapshot, status, created_at, completed_at"
+      )
+      .single();
+
+    if (error) throw error;
+
+    return NextResponse.json({ session: data });
   } catch (error) {
-    console.error("SCAN_INCREMENT_UNEXPECTED", error);
+    console.error("SCAN_COMPLETE_ERROR", error);
 
     return NextResponse.json(
-      { error: "Không thể quét mã sản phẩm." },
+      { error: "Không thể lưu phiên." },
       { status: 500 }
     );
   }
