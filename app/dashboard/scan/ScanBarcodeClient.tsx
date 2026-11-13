@@ -730,44 +730,67 @@ export default function ScanBarcodeClient({
     }
   }
 
-  async function downloadExcel() {
-    if (!session) return;
+ 
+async function downloadExcel() {
+  if (!session) return;
 
-    const response = await fetch(
-      `/api/scan/${session.id}/export`
+  const response = await fetch(
+    `/api/scan/${session.id}/export`,
+    { cache: "no-store" }
+  );
+
+  if (!response.ok) {
+    const json = await response.json().catch(() => ({}));
+
+    throw new Error(
+      json.error || "Không xuất được Excel."
     );
-
-    if (!response.ok) {
-      const json = await response.json().catch(() => ({}));
-      throw new Error(
-        json.error || "Không xuất được Excel."
-      );
-    }
-
-    const url = URL.createObjectURL(
-      await response.blob()
-    );
-
-    const a = document.createElement("a");
-    a.href = url;
-
-    const exportDate = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Ho_Chi_Minh",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date()).replaceAll("-", "");
-    const safeUsername = (session.username_snapshot || "user")
-      .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-zA-Z0-9_-]+/g, "_")
-      .replace(/^_+|_+$/g, "") || "user";
-
-    a.download = `SCAN_BARCODE_${safeUsername}_${exportDate}.xlsx`;
-
-    a.click();
-    URL.revokeObjectURL(url);
   }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+
+  // Lấy tên file do API trả về.
+  const disposition =
+    response.headers.get("Content-Disposition") || "";
+
+  const filenameMatch = disposition.match(
+    /filename="([^"]+)"/i
+  );
+
+  // Dự phòng: lấy username_snapshot của phiên.
+  const ownerUsername =
+    session.username_snapshot || "user";
+
+  const safeUsername = String(ownerUsername)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "user";
+
+  const exportDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .format(new Date())
+    .replaceAll("-", "");
+
+  a.download =
+    filenameMatch?.[1] ||
+    `SCAN_BARCODE_${safeUsername}_${exportDate}.xlsx`;
+
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  URL.revokeObjectURL(url);
+}
+
 
   const displayedItems: ScanItem[] = [
     ...items.map((item) => ({
