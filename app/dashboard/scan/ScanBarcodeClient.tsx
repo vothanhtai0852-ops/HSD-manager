@@ -2,9 +2,9 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import ModuleMenu from "../ModuleMenu";
 import { BrowserMultiFormatReader } from "@zxing/browser";
+import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 
 type ScanSession = {
   id: string;
@@ -29,6 +29,7 @@ type ScanItem = {
 type ScanQueueItem = {
   code: string;
   locationNote: string;
+  sessionId: string;
 };
 
 type CameraControls = { stop: () => void };
@@ -56,6 +57,8 @@ export default function ScanBarcodeClient({
   const [error, setError] = useState("");
   const [cameraError, setCameraError] = useState("");
   const [cameraOn, setCameraOn] = useState(false);
+  const [cameraVisible, setCameraVisible] = useState(false);
+  const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({});
   const [manualCode, setManualCode] = useState("");
   const [locationNote, setLocationNote] = useState("");
   const [edits, setEdits] = useState<
@@ -63,6 +66,9 @@ export default function ScanBarcodeClient({
   >({});
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const manualInputRef = useRef<HTMLInputElement>(null);
+  const pendingCountsRef = useRef<Record<string, number>>({});
+  const activeSessionIdRef = useRef<string | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const cameraControlsRef = useRef<CameraControls | null>(null);
   const scanResetTimerRef = useRef<ReturnType<typeof setInterval> | null>(
@@ -96,8 +102,11 @@ export default function ScanBarcodeClient({
       throw new Error(json.error || "Không tải được phiên.");
     }
 
+    activeSessionIdRef.current = id;
     setSession(json.session);
     setItems(json.items || []);
+    pendingCountsRef.current = {};
+    setPendingCounts({});
 
     setEdits(
       Object.fromEntries(
@@ -107,6 +116,34 @@ export default function ScanBarcodeClient({
         ])
       )
     );
+  }, []);
+
+  useEffect(() => {
+    if (
+      !loading &&
+      session?.status === "DRAFT" &&
+      session.user_id === userId
+    ) {
+      manualInputRef.current?.focus();
+    }
+  }, [loading, session?.id, session?.status, session?.user_id, userId]);
+
+  useEffect(() => {
+    if (!message && !error) return;
+    const timer = window.setTimeout(() => {
+      setMessage("");
+      setError("");
+    }, 2600);
+    return () => window.clearTimeout(timer);
+  }, [message, error]);
+
+  const updatePendingCount = useCallback((code: string, delta: number) => {
+    const next = { ...pendingCountsRef.current };
+    const count = Math.max(0, (next[code] || 0) + delta);
+    if (count === 0) delete next[code];
+    else next[code] = count;
+    pendingCountsRef.current = next;
+    setPendingCounts(next);
   }, []);
 
   const createSession = useCallback(async () => {
@@ -119,12 +156,15 @@ export default function ScanBarcodeClient({
       throw new Error(json.error || "Không tạo được phiên.");
     }
 
-    await loadSessions();
+    setSessions((old) => [
+      json.session,
+      ...old.filter((row) => row.id !== json.session.id),
+    ]);
     await loadSession(json.session.id);
 
     setMessage("Đã tạo phiên kiểm hàng mới.");
     setError("");
-  }, [loadSession, loadSessions]);
+  }, [loadSession]);
 
   useEffect(() => {
     let cancelled = false;
@@ -183,6 +223,8 @@ export default function ScanBarcodeClient({
     lastSeenRef.current = 0;
 
     setCameraOn(false);
+    setCameraVisible(false);
+    window.setTimeout(() => manualInputRef.current?.focus(), 0);
   }, []);
 
   useEffect(
@@ -244,7 +286,7 @@ export default function ScanBarcodeClient({
 
       gain.gain.setValueAtTime(0.0001, startTime);
       gain.gain.exponentialRampToValueAtTime(
-        0.15,
+        0.45,
         startTime + 0.01
       );
       gain.gain.exponentialRampToValueAtTime(
@@ -275,113 +317,100 @@ export default function ScanBarcodeClient({
     setLocationNote(value);
   }, []);
 
-  const addCode = useCallback(
-    async (raw: string) => {
-      const code = raw.trim();
+  const processScanQueue = useCallback(async () => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+    setBusy(true);
 
-      if (
-        !code ||
-        !session ||
-        session.status !== "DRAFT" ||
-        session.user_id !== userId
-      ) {
-        return;
-      }
+    try {
+      while (scanQueueRef.current.length) {
+        const nextItem = scanQueueRef.current.shift()!;
 
-      const capturedLocationNote = locationNoteRef.current.trim();
-
-      scanQueueRef.current.push({
-        code,
-        locationNote: capturedLocationNote,
-      });
-
-      if (processingRef.current) return;
-
-      processingRef.current = true;
-      setBusy(true);
-      setError("");
-
-      try {
-        while (scanQueueRef.current.length) {
-          const nextItem = scanQueueRef.current.shift()!;
-
-          try {
-            const response = await fetch(
-              `/api/scan/${session.id}/items`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  productCode: nextItem.code,
-                  locationNote: nextItem.locationNote,
-                }),
-              }
-            );
-
-            const json = await response.json();
-
-            if (!response.ok) {
-              throw new Error(
-                json.error ||
-                  `Không thể thêm mã ${nextItem.code}.`
-              );
+        try {
+          const response = await fetch(
+            `/api/scan/${nextItem.sessionId}/items`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                productCode: nextItem.code,
+                locationNote: nextItem.locationNote,
+              }),
             }
+          );
+          const json = await response.json();
+          if (!response.ok) {
+            throw new Error(json.error || `Không thể thêm mã ${nextItem.code}.`);
+          }
 
-            const item = json.item as ScanItem;
+          const item = json.item as ScanItem;
+          updatePendingCount(nextItem.code, -1);
 
-            playScanSound(true);
-
+          if (activeSessionIdRef.current === nextItem.sessionId) {
             setItems((old) => {
               const index = old.findIndex(
-                (row) => row.id === item.id
+                (row) => row.id === item.id || row.product_code === item.product_code
               );
-
-              if (index < 0) {
-                return [...old, item];
-              }
-
+              if (index < 0) return [...old, item];
               const next = [...old];
               next[index] = item;
               return next;
             });
-
             setEdits((old) => ({
               ...old,
-              [item.id]: {
-                quantity: String(item.quantity),
-              },
+              [item.id]: { quantity: String(item.quantity) },
             }));
-
-            setMessage(
-              `Đã quét ${item.product_code}, số lượng ${item.quantity}.`
-            );
-          } catch (err) {
-            playScanSound(false);
-
-            setError(
-              err instanceof Error
-                ? err.message
-                : `Không thể quét ${nextItem.code}.`
-            );
+            setMessage(`Đã quét ${item.product_code}, số lượng ${item.quantity}.`);
           }
+          playScanSound(true);
+        } catch (err) {
+          updatePendingCount(nextItem.code, -1);
+          playScanSound(false);
+          setMessage("");
+          setError(
+            err instanceof Error ? err.message : `Không thể quét ${nextItem.code}.`
+          );
         }
-      } finally {
-        processingRef.current = false;
-        setBusy(false);
       }
+    } finally {
+      processingRef.current = false;
+      setBusy(false);
+    }
+  }, [playScanSound, updatePendingCount]);
+
+  const addCode = useCallback(
+    (raw: string) => {
+      const code = raw.trim();
+      const currentSession = session;
+      if (
+        !code ||
+        !currentSession ||
+        currentSession.status !== "DRAFT" ||
+        currentSession.user_id !== userId
+      ) return;
+
+      scanQueueRef.current.push({
+        code,
+        locationNote: locationNoteRef.current.trim(),
+        sessionId: currentSession.id,
+      });
+      updatePendingCount(code, 1);
+      setError("");
+      setMessage(`Đã nhận mã ${code}, đang cập nhật số lượng...`);
+      void processScanQueue();
     },
-    [session, userId, playScanSound]
+    [session, userId, processScanQueue, updatePendingCount]
   );
 
   const startCamera = useCallback(async () => {
     setCameraError("");
+    setCameraVisible(true);
 
     if (!window.isSecureContext) {
       setCameraError(
         "Camera chỉ hoạt động trên HTTPS. Hãy mở website bằng địa chỉ https://."
       );
+      setCameraVisible(false);
       return;
     }
 
@@ -389,6 +418,7 @@ export default function ScanBarcodeClient({
       setCameraError(
         "Trình duyệt không cấp quyền camera. Hãy mở trang bằng Safari trên iPhone hoặc Chrome trên Android."
       );
+      setCameraVisible(false);
       return;
     }
 
@@ -396,6 +426,7 @@ export default function ScanBarcodeClient({
       setCameraError(
         "Không tìm thấy khung camera. Hãy tải lại trang."
       );
+      setCameraVisible(false);
       return;
     }
 
@@ -405,15 +436,32 @@ export default function ScanBarcodeClient({
       lastCodeRef.current = "";
       lastSeenRef.current = 0;
 
-      const reader = new BrowserMultiFormatReader();
+      const hints = new Map();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+        BarcodeFormat.EAN_13,
+        BarcodeFormat.EAN_8,
+        BarcodeFormat.UPC_A,
+        BarcodeFormat.UPC_E,
+        BarcodeFormat.CODE_128,
+        BarcodeFormat.CODE_39,
+        BarcodeFormat.ITF,
+        BarcodeFormat.QR_CODE,
+      ]);
+      hints.set(DecodeHintType.TRY_HARDER, false);
+      const reader = new BrowserMultiFormatReader(hints, {
+        // Re-run decoding quickly after both a successful and failed attempt.
+        delayBetweenScanSuccess: 100,
+        delayBetweenScanAttempts: 100,
+      });
 
       const controls = await reader.decodeFromConstraints(
         {
           audio: false,
           video: {
             facingMode: { ideal: "environment" },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: { ideal: 960 },
+            height: { ideal: 540 },
+            frameRate: { ideal: 30, max: 30 },
           },
         },
         videoRef.current,
@@ -438,16 +486,18 @@ export default function ScanBarcodeClient({
       scanResetTimerRef.current = setInterval(() => {
         if (
           lastCodeRef.current &&
-          Date.now() - lastSeenRef.current > 1200
+          Date.now() - lastSeenRef.current > 400
         ) {
           lastCodeRef.current = "";
         }
-      }, 250);
+      }, 100);
 
       setCameraOn(true);
       setError("");
+      window.requestAnimationFrame(() => manualInputRef.current?.focus());
     } catch (err) {
       stopCamera();
+      setCameraVisible(false);
 
       const cameraErr = err as DOMException;
 
@@ -490,9 +540,10 @@ export default function ScanBarcodeClient({
     const code = manualCode.trim();
     if (!code) return;
 
-    await prepareAudio().catch(() => {});
-    await addCode(code);
+    void prepareAudio().catch(() => {});
+    addCode(code);
     setManualCode("");
+    window.requestAnimationFrame(() => manualInputRef.current?.focus());
   }
 
   async function saveItem(item: ScanItem) {
@@ -598,7 +649,7 @@ export default function ScanBarcodeClient({
       }
 
       setSession(json.session);
-      await loadSessions();
+      setSessions((old) => old.map((row) => row.id === json.session.id ? json.session : row));
       stopCamera();
       setMessage("Đã lưu phiên kiểm hàng.");
     } catch (err) {
@@ -647,6 +698,7 @@ export default function ScanBarcodeClient({
           json.error || "Không thể đóng phiên hiện tại."
         );
       }
+      setSessions((old) => old.map((row) => row.id === json.session.id ? json.session : row));
     }
 
     stopCamera();
@@ -690,7 +742,26 @@ export default function ScanBarcodeClient({
     URL.revokeObjectURL(url);
   }
 
-  const total = items.reduce(
+  const displayedItems: ScanItem[] = [
+    ...items.map((item) => ({
+      ...item,
+      quantity: item.quantity + (pendingCounts[item.product_code] || 0),
+    })),
+    ...Object.entries(pendingCounts)
+      .filter(([code, count]) => count > 0 && !items.some((item) => item.product_code === code))
+      .map(([code, count]) => ({
+        id: `pending-${code}`,
+        product_code: code,
+        product_name: "Đang đồng bộ sản phẩm...",
+        quantity: count,
+        note: null,
+        location_note: locationNote,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })),
+  ];
+
+  const total = displayedItems.reduce(
     (sum, item) => sum + item.quantity,
     0
   );
@@ -787,7 +858,7 @@ export default function ScanBarcodeClient({
                   setError(err.message)
                 )
               }
-              disabled={!session || items.length === 0}
+              disabled={!session || displayedItems.length === 0}
             >
               Xuất Excel
             </button>
@@ -806,38 +877,21 @@ export default function ScanBarcodeClient({
           </div>
         </div>
 
-        {/* GHI CHÚ VỊ TRÍ DÙNG CHUNG */}
+        {/* VỊ TRÍ QUÉT DÙNG CHUNG */}
         <div className="scan-location-panel">
-          <label>
-            <strong style={{ fontSize: "20px" }}>
-              vị trí Scan
-            </strong>
-
-            <input
-              type="text"
-              value={locationNote}
-              maxLength={500}
-              placeholder=""
-              disabled={
-                !session ||
-                session.status !== "DRAFT" ||
-                session.user_id !== userId
-              }
-              onChange={(e) =>
-                changeLocationNote(e.target.value)
-              }
-              style={{
-                fontSize: "15px",
-        minHeight: "40px",
-        padding: "8px 12px",
-        marginBottom: "12px",
-        marginTop: "6px",
-      }}
-            />
-          </label>
+          <label htmlFor="scan-location-note">Vị trí Scan</label>
+          <input
+            id="scan-location-note"
+            type="text"
+            value={locationNote}
+            maxLength={500}
+            placeholder="Ví dụ: Kệ A1, quầy nước..."
+            disabled={!session || session.status !== "DRAFT" || session.user_id !== userId}
+            onChange={(e) => changeLocationNote(e.target.value)}
+          />
         </div>
 
-        <div className="scan-camera-layout">
+        <div className={`scan-camera-layout ${cameraVisible ? "camera-visible" : ""}`}>
           {/* NHẬP MÃ THỦ CÔNG */}
           <div className="scan-manual-panel">
             <h2>Nhập mã thủ công</h2>
@@ -847,6 +901,8 @@ export default function ScanBarcodeClient({
               onSubmit={submitManual}
             >
               <input
+                ref={manualInputRef}
+                autoFocus
                 value={manualCode}
                 onChange={(e) =>
                   setManualCode(e.target.value)
@@ -856,8 +912,7 @@ export default function ScanBarcodeClient({
                 disabled={
                   !session ||
                   session.status !== "DRAFT" ||
-                  session.user_id !== userId ||
-                  busy
+                  session.user_id !== userId
                 }
               />
 
@@ -868,8 +923,7 @@ export default function ScanBarcodeClient({
                   !manualCode.trim() ||
                   !session ||
                   session.status !== "DRAFT" ||
-                  session.user_id !== userId ||
-                  busy
+                  session.user_id !== userId
                 }
               >
                 Thêm mã
@@ -877,74 +931,58 @@ export default function ScanBarcodeClient({
             </form>
           </div>
 
-          {/* CAMERA QUÉT MÃ */}
-          <div className="scan-camera-panel">
+          {/* CAMERA CHỈ MỞ KHI NGƯỜI DÙNG NHẤN NÚT */}
+          <div className={`scan-camera-panel ${cameraVisible ? "is-visible" : "is-collapsed"}`}>
             <video
               ref={videoRef}
-              className={
-                cameraOn
-                  ? "scan-video active"
-                  : "scan-video"
-              }
+              className={cameraOn ? "scan-video active" : "scan-video"}
               muted
               playsInline
             />
-
             {!cameraOn && (
               <div className="scan-camera-placeholder">
                 <div className="scan-camera-symbol">▦</div>
-                <strong>Camera quét mã vạch</strong>
+                <strong>Đang kết nối camera...</strong>
               </div>
             )}
-
-            <div className="scan-camera-actions">
-              {!cameraOn ? (
-                <button
-                  type="button"
-                  className="kk-button-primary"
-                  onClick={startCamera}
-                  disabled={
-                    !session ||
-                    session.status !== "DRAFT" ||
-                    session.user_id !== userId
-                  }
-                >
-                  Mở camera
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={stopCamera}
-                >
-                  Tắt camera
-                </button>
-              )}
-            </div>
-
-            {cameraError && (
-              <p className="scan-inline-warning">
-                {cameraError}
-              </p>
+            {cameraOn && (
+              <div className="scan-camera-actions">
+                <button type="button" onClick={stopCamera}>Tắt camera</button>
+              </div>
             )}
           </div>
         </div>
 
-        {error && (
-          <div className="scan-message error">
-            {error}
+        {!cameraVisible && (
+          <div className="scan-camera-launch">
+            <button
+              type="button"
+              className="kk-button-primary"
+              onClick={startCamera}
+              disabled={!session || session.status !== "DRAFT" || session.user_id !== userId}
+            >
+              Mở camera
+            </button>
           </div>
+        )}
+        {cameraError && (
+          <p className="scan-inline-warning scan-camera-error">{cameraError}</p>
         )}
 
-        {message && (
-          <div className="scan-message success">
+        {error ? (
+          <div className="scan-toast scan-toast-error" role="status" aria-live="assertive">
+            {error}
+          </div>
+        ) : message ? (
+          <div className="scan-toast scan-toast-success" role="status" aria-live="polite">
             {message}
           </div>
-        )}
+        ) : null}
 
         <div className="scan-summary">
           <div>
             <span>Dòng sản phẩm</span>
-            <strong>{items.length}</strong>
+            <strong>{displayedItems.length}</strong>
           </div>
 
           <div>
@@ -957,10 +995,10 @@ export default function ScanBarcodeClient({
 
         <div className="scan-items-heading">
           <h2>Danh sách đã quét</h2>
-          <span>{items.length} dòng</span>
+          <span>{displayedItems.length} dòng</span>
         </div>
 
-        {items.length === 0 ? (
+        {displayedItems.length === 0 ? (
           <div className="scan-empty">
             Chưa có sản phẩm. Bật camera hoặc nhập mã để
             bắt đầu.
@@ -979,7 +1017,7 @@ export default function ScanBarcodeClient({
               </thead>
 
               <tbody>
-                {items.map((item) => {
+                {displayedItems.map((item) => {
                   const edit = edits[item.id] || {
                     quantity: String(item.quantity),
                   };
@@ -999,19 +1037,33 @@ export default function ScanBarcodeClient({
                           min="1"
                           max="1000000"
                           step="1"
-                          value={edit.quantity}
+                          value={
+                            (pendingCounts[item.product_code] || 0) > 0
+                              ? String(item.quantity)
+                              : edit.quantity
+                          }
                           disabled={
+                            item.id.startsWith("pending-") ||
+                            (pendingCounts[item.product_code] || 0) > 0 ||
                             session?.status !== "DRAFT" ||
                             session.user_id !== userId
                           }
                           onChange={(e) =>
                             setEdits((old) => ({
                               ...old,
-                              [item.id]: {
-                                quantity: e.target.value,
-                              },
+                              [item.id]: { quantity: e.target.value },
                             }))
                           }
+                          onBlur={() => {
+                            if (!item.id.startsWith("pending-") && Number(edit.quantity) !== item.quantity) {
+                              saveItem(item).catch((err) => setError(err.message));
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.currentTarget.blur();
+                            }
+                          }}
                         />
                       </td>
 
@@ -1021,22 +1073,13 @@ export default function ScanBarcodeClient({
 
                       <td>
                         {session?.status === "DRAFT" &&
-                          session.user_id === userId && (
+                          session.user_id === userId &&
+                          !item.id.startsWith("pending-") && (
                             <div className="scan-row-actions">
                               <button
                                 type="button"
-                                onClick={() =>
-                                  saveItem(item).catch((err) =>
-                                    setError(err.message)
-                                  )
-                                }
-                              >
-                                Lưu
-                              </button>
-
-                              <button
-                                type="button"
                                 className="scan-delete-button"
+                                disabled={(pendingCounts[item.product_code] || 0) > 0}
                                 onClick={() =>
                                   deleteItem(item).catch((err) =>
                                     setError(err.message)

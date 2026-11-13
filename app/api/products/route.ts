@@ -236,6 +236,13 @@ export async function GET(request: Request) {
 
 
 
+    // Fetch thresholds in parallel with the current-user request.
+    const alertConfigsPromise = supabaseServer
+      .from("alert_configs")
+      .select("user_id, threshold_percent")
+      .eq("active", true)
+      .then((result) => result);
+
     const {
 
       data: currentUser,
@@ -1192,40 +1199,9 @@ export async function GET(request: Request) {
 
 
     const {
-
       data: alertConfigs,
-
       error: alertConfigsError,
-
-    } =
-
-      await supabaseServer
-
-        .from(
-
-          "alert_configs"
-
-        )
-
-        .select(
-
-          `
-
-            user_id,
-
-            threshold_percent
-
-          `
-
-        )
-
-        .eq(
-
-          "active",
-
-          true
-
-        );
+    } = await alertConfigsPromise;
 
 
 
@@ -1470,37 +1446,43 @@ export async function GET(request: Request) {
       firstQuery = firstQuery.in("user_id", allowedUserIds);
     }
 
-    const {
-      data: firstRows,
-      count: productCount,
-      error: firstProductsError,
-    } = await firstQuery;
+    // Fetch the first two product batches concurrently. This removes one
+    // complete Supabase round-trip for installations with 1,001–2,000 rows.
+    const [firstResult, secondResult] = await Promise.all([
+      firstQuery,
+      buildProductBatch(batchSize),
+    ]);
 
-    if (firstProductsError) {
-      console.error("PRODUCTS_DATABASE_ERROR:", firstProductsError);
+    if (firstResult.error) {
+      console.error("PRODUCTS_DATABASE_ERROR:", firstResult.error);
       return NextResponse.json(
         { error: "Không thể tải danh sách sản phẩm." },
         { status: 500 }
       );
     }
 
-    appendProductRows(firstRows);
+    if (secondResult.error) {
+      console.error("PRODUCTS_DATABASE_BATCH_ERROR:", secondResult.error);
+      return NextResponse.json(
+        { error: "Không thể tải danh sách sản phẩm." },
+        { status: 500 }
+      );
+    }
 
-    const expectedRows = productCount ?? allProducts.length;
+    appendProductRows(firstResult.data);
+    const expectedRows = firstResult.count ?? ((firstResult.data?.length ?? 0) + (secondResult.data?.length ?? 0));
+
+    if (expectedRows > batchSize) {
+      appendProductRows(secondResult.data);
+    }
+
     const remainingOffsets: number[] = [];
-
-    for (let offset = batchSize; offset < expectedRows; offset += batchSize) {
+    for (let offset = batchSize * 2; offset < expectedRows; offset += batchSize) {
       remainingOffsets.push(offset);
     }
 
-    // Load up to four pages at a time instead of waiting for every DB round trip.
     const batchConcurrency = 4;
-
-    for (
-      let index = 0;
-      index < remainingOffsets.length;
-      index += batchConcurrency
-    ) {
+    for (let index = 0; index < remainingOffsets.length; index += batchConcurrency) {
       const offsets = remainingOffsets.slice(index, index + batchConcurrency);
       const results = await Promise.all(
         offsets.map((offset) => buildProductBatch(offset))
@@ -1514,7 +1496,6 @@ export async function GET(request: Request) {
             { status: 500 }
           );
         }
-
         appendProductRows(result.data);
       }
     }

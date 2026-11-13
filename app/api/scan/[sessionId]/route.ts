@@ -1,12 +1,12 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
-import { getScanActor, getScanSession, isUuid } from "@/lib/scan";
+import { getScanActor, getScanSession, getScanTokenActor, isUuid } from "@/lib/scan";
 
 type Context = { params: Promise<{ sessionId: string }> };
 
 export async function GET(_request: NextRequest, context: Context) {
-  const auth = await getScanActor();
+  const auth = await getScanTokenActor();
   if (auth.error) return auth.error;
 
   const { sessionId } = await context.params;
@@ -19,7 +19,21 @@ export async function GET(_request: NextRequest, context: Context) {
   }
 
   try {
-    const access = await getScanSession(auth.actor, sessionId);
+    const [currentUserResult, access] = await Promise.all([
+      supabaseServer.from("users").select("id, role, active")
+        .eq("id", auth.actor.id).maybeSingle(),
+      getScanSession(auth.actor, sessionId),
+    ]);
+
+    if (currentUserResult.error) {
+      throw currentUserResult.error;
+    }
+    if (!currentUserResult.data?.active) {
+      return NextResponse.json({ error: "Tài khoản không hoạt động." }, { status: 401 });
+    }
+    if (currentUserResult.data.role !== auth.actor.role) {
+      return NextResponse.json({ error: "Quyền tài khoản đã thay đổi. Hãy đăng nhập lại." }, { status: 401 });
+    }
 
     if (access.forbidden) {
       return NextResponse.json(

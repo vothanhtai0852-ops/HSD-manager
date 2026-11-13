@@ -1,12 +1,12 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
-import { getScanActor, getScanSession, isUuid } from "@/lib/scan";
+import { getScanTokenActor, isUuid } from "@/lib/scan";
 
 type Context = { params: Promise<{ sessionId: string }> };
 
 export async function POST(request: NextRequest, context: Context) {
-  const auth = await getScanActor();
+  const auth = await getScanTokenActor();
   if (auth.error) return auth.error;
 
   const { sessionId } = await context.params;
@@ -41,36 +41,8 @@ export async function POST(request: NextRequest, context: Context) {
   }
 
   try {
-    const access = await getScanSession(auth.actor, sessionId);
-
-    if (access.forbidden) {
-      return NextResponse.json(
-        { error: "Không có quyền sửa phiên này." },
-        { status: 403 }
-      );
-    }
-
-    if (!access.session) {
-      return NextResponse.json(
-        { error: "Không tìm thấy phiên." },
-        { status: 404 }
-      );
-    }
-
-    if (access.session.user_id !== auth.actor.id) {
-      return NextResponse.json(
-        { error: "Chỉ người tạo phiên mới được quét." },
-        { status: 403 }
-      );
-    }
-
-    if (access.session.status !== "DRAFT") {
-      return NextResponse.json(
-        { error: "Phiên đã lưu, không thể thêm mã." },
-        { status: 409 }
-      );
-    }
-
+    // Ownership, active-user and active-session checks are performed atomically
+    // inside scan_increment_item, avoiding separate SELECT requests here.
     const { data, error } = await supabaseServer.rpc(
       "scan_increment_item",
       {
@@ -91,8 +63,15 @@ export async function POST(request: NextRequest, context: Context) {
 
       if (error.message.includes("SESSION_NOT_ACTIVE")) {
         return NextResponse.json(
-          { error: "Phiên đã lưu, không thể thêm mã." },
+          { error: "Phiên không tồn tại, không thuộc tài khoản này hoặc đã lưu." },
           { status: 409 }
+        );
+      }
+
+      if (error.message.includes("ACTOR_NOT_ACTIVE")) {
+        return NextResponse.json(
+          { error: "Tài khoản không hoạt động." },
+          { status: 401 }
         );
       }
 

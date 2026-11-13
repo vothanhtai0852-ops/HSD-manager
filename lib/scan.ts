@@ -10,6 +10,32 @@ export type ScanActor = {
   active: boolean;
 };
 
+// Fast identity check for the scan-increment RPC. The RPC itself verifies
+// that the user is active and that the session belongs to this user, so this
+// path avoids two extra Supabase round-trips for every barcode.
+export async function getScanTokenActor(): Promise<
+  { actor: ScanActor; error: null } | { actor: null; error: NextResponse }
+> {
+  const jar = await cookies();
+  const token = jar.get("hsd_session")?.value;
+  if (!token) {
+    return { actor: null, error: NextResponse.json({ error: "Chưa đăng nhập." }, { status: 401 }) };
+  }
+  const session = await verifySessionToken(token);
+  if (!session) {
+    return { actor: null, error: NextResponse.json({ error: "Phiên đăng nhập không hợp lệ." }, { status: 401 }) };
+  }
+  return {
+    actor: {
+      id: session.userId,
+      username: session.username,
+      role: session.role,
+      active: true,
+    },
+    error: null,
+  };
+}
+
 export async function getScanActor(): Promise<
   { actor: ScanActor; error: null } | { actor: null; error: NextResponse }
 > {
