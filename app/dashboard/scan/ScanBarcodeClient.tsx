@@ -34,6 +34,33 @@ type ScanQueueItem = {
 
 type CameraControls = { stop: () => void };
 
+type ScanConfirmDialog = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  danger?: boolean;
+  onConfirm: () => Promise<void>;
+};
+
+async function readApiResponse(response: Response): Promise<Record<string, any>> {
+  const raw = await response.text();
+  if (!raw.trim()) {
+    return {
+      error: `Máy chủ không trả nội dung (HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}).`,
+    };
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, any>;
+    }
+    return { error: "Phản hồi API không đúng định dạng." };
+  } catch {
+    return { error: raw.slice(0, 300) || `Phản hồi API không hợp lệ (HTTP ${response.status}).` };
+  }
+}
+
 const dateLabel = (value: string) =>
   new Intl.DateTimeFormat("vi-VN", {
     timeZone: "Asia/Ho_Chi_Minh",
@@ -55,6 +82,8 @@ export default function ScanBarcodeClient({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [confirmDialog, setConfirmDialog] = useState<ScanConfirmDialog | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
   const [cameraError, setCameraError] = useState("");
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraVisible, setCameraVisible] = useState(false);
@@ -82,7 +111,7 @@ export default function ScanBarcodeClient({
 
   const loadSessions = useCallback(async () => {
     const response = await fetch("/api/scan", { cache: "no-store" });
-    const json = await response.json();
+    const json = await readApiResponse(response);
 
     if (!response.ok) {
       throw new Error(json.error || "Không tải được lịch sử.");
@@ -96,10 +125,13 @@ export default function ScanBarcodeClient({
     const response = await fetch(`/api/scan/${id}`, {
       cache: "no-store",
     });
-    const json = await response.json();
+    const json = await readApiResponse(response);
 
     if (!response.ok) {
-      throw new Error(json.error || "Không tải được phiên.");
+      if (response.status === 405) {
+        throw new Error("API chi tiết phiên đang trả HTTP 405: bản deploy chưa có phương thức GET của /api/scan/[sessionId]. Hãy cập nhật đúng file route.ts và deploy lại.");
+      }
+      throw new Error(json.error || `Không tải được phiên (HTTP ${response.status}).`);
     }
 
     activeSessionIdRef.current = id;
@@ -150,7 +182,7 @@ export default function ScanBarcodeClient({
     const response = await fetch("/api/scan", {
       method: "POST",
     });
-    const json = await response.json();
+    const json = await readApiResponse(response);
 
     if (!response.ok) {
       throw new Error(json.error || "Không tạo được phiên.");
@@ -338,7 +370,7 @@ export default function ScanBarcodeClient({
               }),
             }
           );
-          const json = await response.json();
+          const json = await readApiResponse(response);
           if (!response.ok) {
             throw new Error(json.error || `Không thể thêm mã ${nextItem.code}.`);
           }
@@ -562,7 +594,7 @@ export default function ScanBarcodeClient({
       }
     );
 
-    const json = await response.json();
+    const json = await readApiResponse(response);
 
     if (!response.ok) {
       throw new Error(json.error || "Không lưu được.");
@@ -584,125 +616,118 @@ export default function ScanBarcodeClient({
     setMessage(`Đã lưu ${item.product_code}.`);
   }
 
-  async function deleteItem(item: ScanItem) {
-    if (
-      !window.confirm(
-        `Xóa mã ${item.product_code} tại vị trí "${item.location_note || "Chưa ghi chú"}" khỏi phiên?`
-      )
-    ) {
-      return;
-    }
+  function deleteItem(item: ScanItem) {
+    setConfirmDialog({
+      title: "Xóa sản phẩm đã quét?",
+      description: `Xóa mã ${item.product_code} tại vị trí "${item.location_note || "Chưa ghi chú"}" khỏi phiên kiểm hàng?`,
+      confirmLabel: "Xóa sản phẩm",
+      danger: true,
+      onConfirm: async () => {
+        const response = await fetch(
+          `/api/scan/${session?.id}/items/${item.id}`,
+          { method: "DELETE" }
+        );
+        const json = await readApiResponse(response);
+        if (!response.ok) {
+          throw new Error(json.error || `Không xóa được (HTTP ${response.status}).`);
+        }
 
-    const response = await fetch(
-      `/api/scan/${session?.id}/items/${item.id}`,
-      {
-        method: "DELETE",
-      }
-    );
-
-    const json = await response.json();
-
-    if (!response.ok) {
-      throw new Error(json.error || "Không xóa được.");
-    }
-
-    setItems((old) =>
-      old.filter((row) => row.id !== item.id)
-    );
-
-    setEdits((old) => {
-      const next = { ...old };
-      delete next[item.id];
-      return next;
+        setItems((old) => old.filter((row) => row.id !== item.id));
+        setEdits((old) => {
+          const next = { ...old };
+          delete next[item.id];
+          return next;
+        });
+        setMessage(`Đã xóa mã ${item.product_code}.`);
+      },
     });
   }
 
-  async function completeSession() {
-    if (
-      !session ||
-      session.status !== "DRAFT" ||
-      !window.confirm("Lưu và khóa phiên kiểm hàng này?")
-    ) {
-      return;
-    }
-
+  async function performCompleteSession() {
+    if (!session || session.status !== "DRAFT") return;
     setBusy(true);
-
     try {
-      const response = await fetch(
-        `/api/scan/${session.id}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ action: "COMPLETE" }),
-        }
-      );
-
-      const json = await response.json();
-
+      const response = await fetch(`/api/scan/${session.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "COMPLETE" }),
+      });
+      const json = await readApiResponse(response);
       if (!response.ok) {
-        throw new Error(
-          json.error || "Không lưu được phiên."
-        );
+        throw new Error(json.error || `Không lưu được phiên (HTTP ${response.status}).`);
       }
 
       setSession(json.session);
       setSessions((old) => old.map((row) => row.id === json.session.id ? json.session : row));
       stopCamera();
       setMessage("Đã lưu phiên kiểm hàng.");
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Không lưu được phiên."
-      );
+      setError("");
     } finally {
       setBusy(false);
     }
   }
 
-  async function newSession() {
-    const activeOwnSession = sessions.find(
-      (row) =>
-        row.user_id === userId &&
-        row.status === "DRAFT"
-    );
+  function completeSession() {
+    if (!session || session.status !== "DRAFT") return;
+    setConfirmDialog({
+      title: "Lưu và khóa phiên kiểm hàng?",
+      description: "Sau khi lưu, phiên này sẽ bị khóa và không thể tiếp tục thêm hoặc sửa sản phẩm.",
+      confirmLabel: "Lưu phiên",
+      onConfirm: performCompleteSession,
+    });
+  }
 
-    if (
-      activeOwnSession &&
-      !window.confirm(
-        "Tạo phiên mới sẽ lưu và khóa phiên đang kiểm hiện tại. Tiếp tục?"
-      )
-    ) {
-      return;
-    }
-
+  async function performNewSession(activeOwnSession?: ScanSession) {
     if (activeOwnSession) {
-      const response = await fetch(
-        `/api/scan/${activeOwnSession.id}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ action: "COMPLETE" }),
-        }
-      );
-
-      const json = await response.json();
-
+      const response = await fetch(`/api/scan/${activeOwnSession.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "COMPLETE" }),
+      });
+      const json = await readApiResponse(response);
       if (!response.ok) {
-        throw new Error(
-          json.error || "Không thể đóng phiên hiện tại."
-        );
+        throw new Error(json.error || `Không thể đóng phiên hiện tại (HTTP ${response.status}).`);
       }
       setSessions((old) => old.map((row) => row.id === json.session.id ? json.session : row));
     }
 
     stopCamera();
     await createSession();
+  }
+
+  function newSession() {
+    const activeOwnSession = sessions.find(
+      (row) => row.user_id === userId && row.status === "DRAFT"
+    );
+
+    if (activeOwnSession) {
+      setConfirmDialog({
+        title: "Tạo phiên kiểm hàng mới?",
+        description: "Phiên đang kiểm sẽ được lưu và khóa trước khi mở phiên mới. Dữ liệu đã quét được giữ lại.",
+        confirmLabel: "Tạo phiên mới",
+        onConfirm: () => performNewSession(activeOwnSession),
+      });
+      return;
+    }
+
+    void performNewSession().catch((err) => {
+      setError(err instanceof Error ? err.message : "Không thể tạo phiên mới.");
+    });
+  }
+
+  async function runConfirmAction() {
+    const dialog = confirmDialog;
+    if (!dialog || confirmBusy) return;
+    setConfirmBusy(true);
+    try {
+      await dialog.onConfirm();
+      setConfirmDialog(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thực hiện được thao tác.");
+      setConfirmDialog(null);
+    } finally {
+      setConfirmBusy(false);
+    }
   }
 
   async function downloadExcel() {
@@ -804,12 +829,16 @@ export default function ScanBarcodeClient({
             className={`scan-status ${
               session?.status === "DRAFT"
                 ? "is-active"
-                : "is-complete"
+                : session?.status === "COMPLETED"
+                  ? "is-complete"
+                  : "is-loading"
             }`}
           >
-            {session?.status === "DRAFT"
+            {loading ? "ĐANG TẢI" : session?.status === "DRAFT"
               ? "ĐANG KIỂM"
-              : "ĐÃ LƯU"}
+              : session?.status === "COMPLETED"
+                ? "ĐÃ LƯU"
+                : "CHƯA TẢI ĐƯỢC"}
           </span>
         </div>
 
@@ -841,11 +870,7 @@ export default function ScanBarcodeClient({
           <div className="scan-toolbar-actions">
             <button
               type="button"
-              onClick={() =>
-                newSession().catch((err) =>
-                  setError(err.message)
-                )
-              }
+              onClick={newSession}
               disabled={busy}
             >
               + Phiên mới
@@ -979,6 +1004,48 @@ export default function ScanBarcodeClient({
           </div>
         ) : null}
 
+        {confirmDialog && (
+          <div
+            className="scan-confirm-overlay"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget && !confirmBusy) {
+                setConfirmDialog(null);
+              }
+            }}
+          >
+            <section
+              className="scan-confirm-card"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="scan-confirm-title"
+              aria-describedby="scan-confirm-description"
+            >
+              <div className="scan-confirm-mark">!</div>
+              <h2 id="scan-confirm-title">{confirmDialog.title}</h2>
+              <p id="scan-confirm-description">{confirmDialog.description}</p>
+              <div className="scan-confirm-actions">
+                <button
+                  type="button"
+                  className="scan-confirm-cancel"
+                  disabled={confirmBusy}
+                  onClick={() => setConfirmDialog(null)}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  className={confirmDialog.danger ? "scan-confirm-submit is-danger" : "scan-confirm-submit"}
+                  disabled={confirmBusy}
+                  onClick={() => void runConfirmAction()}
+                >
+                  {confirmBusy ? "Đang xử lý..." : confirmDialog.confirmLabel}
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
+
         <div className="scan-summary">
           <div>
             <span>Dòng sản phẩm</span>
@@ -1080,11 +1147,7 @@ export default function ScanBarcodeClient({
                                 type="button"
                                 className="scan-delete-button"
                                 disabled={(pendingCounts[item.product_code] || 0) > 0}
-                                onClick={() =>
-                                  deleteItem(item).catch((err) =>
-                                    setError(err.message)
-                                  )
-                                }
+                                onClick={() => deleteItem(item)}
                               >
                                 Xóa
                               </button>
