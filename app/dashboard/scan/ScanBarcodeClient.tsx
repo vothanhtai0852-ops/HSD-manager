@@ -751,17 +751,19 @@ export default function ScanBarcodeClient({
     const a = document.createElement("a");
     a.href = url;
 
-    a.download = `SCAN_BARCODE_${new Intl.DateTimeFormat(
-      "en-CA",
-      {
-        timeZone: "Asia/Ho_Chi_Minh",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }
-    )
-      .format(new Date())
-      .replaceAll("-", "")}.xlsx`;
+    const exportDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Ho_Chi_Minh",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date()).replaceAll("-", "");
+    const safeUsername = (session.username_snapshot || "user")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9_-]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "user";
+
+    a.download = `SCAN_BARCODE_${safeUsername}_${exportDate}.xlsx`;
 
     a.click();
     URL.revokeObjectURL(url);

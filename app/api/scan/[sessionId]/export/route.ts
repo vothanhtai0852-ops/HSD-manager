@@ -102,12 +102,18 @@ export async function GET(_request: Request, context: Context) {
       .format(new Date())
       .replaceAll("-", "");
 
+    const safeUsername = String(access.session.username_snapshot || "user")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9_-]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "user";
+
     return new NextResponse(new Uint8Array(bytes), {
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition":
-          `attachment; filename="SCAN_BARCODE_${date}.xlsx"`,
+          `attachment; filename="SCAN_BARCODE_${safeUsername}_${date}.xlsx"`,
         "Cache-Control": "private, no-store",
       },
     });
