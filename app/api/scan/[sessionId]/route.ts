@@ -60,7 +60,7 @@ export async function GET(_request: NextRequest, context: Context) {
         "id, product_code, product_name, quantity, note, location_note, created_at, updated_at"
       )
       .eq("session_id", sessionId)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: false });
 
     if (error) throw error;
 
@@ -160,5 +160,25 @@ export async function PATCH(request: NextRequest, context: Context) {
       { error: "Không thể lưu phiên." },
       { status: 500 }
     );
+  }
+}
+
+
+export async function DELETE(_request: NextRequest, context: Context) {
+  const auth = await getScanActor();
+  if (auth.error) return auth.error;
+  const { sessionId } = await context.params;
+  if (!isUuid(sessionId)) return NextResponse.json({ error: "Mã phiên không hợp lệ." }, { status: 400 });
+  try {
+    const access = await getScanSession(auth.actor, sessionId);
+    if (access.forbidden) return NextResponse.json({ error: "Không có quyền xóa phiên này." }, { status: 403 });
+    if (!access.session) return NextResponse.json({ error: "Không tìm thấy phiên." }, { status: 404 });
+    if (access.session.user_id !== auth.actor.id) return NextResponse.json({ error: "Chỉ người tạo phiên mới được xóa." }, { status: 403 });
+    const { error } = await supabaseServer.from("scan_sessions").delete().eq("id", sessionId).eq("user_id", auth.actor.id);
+    if (error) throw error;
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("SCAN_SESSION_DELETE_ERROR", error);
+    return NextResponse.json({ error: "Không thể xóa phiên kiểm." }, { status: 500 });
   }
 }

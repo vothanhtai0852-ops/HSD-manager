@@ -57,7 +57,13 @@ async function readApiResponse(response: Response): Promise<Record<string, any>>
     }
     return { error: "Phản hồi API không đúng định dạng." };
   } catch {
-    return { error: raw.slice(0, 300) || `Phản hồi API không hợp lệ (HTTP ${response.status}).` };
+    const looksLikeHtml = /<!doctype html|<html[\s>]/i.test(raw);
+    if (looksLikeHtml) {
+      return {
+        error: `Máy chủ trả về trang HTML thay vì dữ liệu API (HTTP ${response.status}). Có thể route chưa được deploy đúng hoặc đường dẫn API không tồn tại.`,
+      };
+    }
+    return { error: `Phản hồi API không hợp lệ (HTTP ${response.status}).` };
   }
 }
 
@@ -84,6 +90,8 @@ export default function ScanBarcodeClient({
   const [error, setError] = useState("");
   const [confirmDialog, setConfirmDialog] = useState<ScanConfirmDialog | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const [sessionPanelOpen, setSessionPanelOpen] = useState(false);
+  const sessionPanelRef = useRef<HTMLDivElement>(null);
   const [cameraError, setCameraError] = useState("");
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraVisible, setCameraVisible] = useState(false);
@@ -149,6 +157,17 @@ export default function ScanBarcodeClient({
       )
     );
   }, []);
+
+  useEffect(() => {
+    if (!sessionPanelOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (sessionPanelRef.current && !sessionPanelRef.current.contains(event.target as Node)) {
+        setSessionPanelOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [sessionPanelOpen]);
 
   useEffect(() => {
     if (
@@ -383,7 +402,7 @@ export default function ScanBarcodeClient({
               const index = old.findIndex(
                 (row) => row.id === item.id || row.product_code === item.product_code
               );
-              if (index < 0) return [...old, item];
+              if (index < 0) return [item, ...old];
               const next = [...old];
               next[index] = item;
               return next;
@@ -486,11 +505,25 @@ export default function ScanBarcodeClient({
         delayBetweenScanAttempts: 100,
       });
 
+      let androidMainCameraId: string | undefined;
+      if (/Android/i.test(navigator.userAgent)) {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const cameras = devices.filter((device) => device.kind === "videoinput");
+          const rearCameras = cameras.filter((device) => /back|rear|environment/i.test(device.label));
+          const candidates = rearCameras.length ? rearCameras : cameras;
+          const mainCamera = candidates.find((device) => !/ultra.?wide|ultrawide|0[.,]5x|0\.5/i.test(device.label)) || candidates[0];
+          androidMainCameraId = mainCamera?.deviceId || undefined;
+        } catch {
+          // Fall back to the browser's environment-facing camera.
+        }
+      }
+
       const controls = await reader.decodeFromConstraints(
         {
           audio: false,
           video: {
-            facingMode: { ideal: "environment" },
+            ...(androidMainCameraId ? { deviceId: { exact: androidMainCameraId } } : { facingMode: { ideal: "environment" } }),
             width: { ideal: 960 },
             height: { ideal: 540 },
             frameRate: { ideal: 30, max: 30 },
@@ -514,6 +547,17 @@ export default function ScanBarcodeClient({
       );
 
       cameraControlsRef.current = controls;
+
+      // Android browsers may select an ultra-wide rear lens by default.
+      // Request the neutral 1x zoom when the active camera exposes zoom controls.
+      if (/Android/i.test(navigator.userAgent)) {
+        const stream = videoRef.current?.srcObject as MediaStream | null;
+        const track = stream?.getVideoTracks()[0];
+        const capabilities = track?.getCapabilities?.() as (MediaTrackCapabilities & { zoom?: { min: number; max: number; step?: number } }) | undefined;
+        if (track && capabilities?.zoom && capabilities.zoom.min <= 1 && capabilities.zoom.max >= 1) {
+          void track.applyConstraints({ advanced: [{ zoom: 1 } as MediaTrackConstraintSet] }).catch(() => {});
+        }
+      }
 
       scanResetTimerRef.current = setInterval(() => {
         if (
@@ -623,22 +667,28 @@ export default function ScanBarcodeClient({
       confirmLabel: "Xóa sản phẩm",
       danger: true,
       onConfirm: async () => {
-        const response = await fetch(
-          `/api/scan/${session?.id}/items/${item.id}`,
-          { method: "DELETE" }
-        );
-        const json = await readApiResponse(response);
-        if (!response.ok) {
-          throw new Error(json.error || `Không xóa được (HTTP ${response.status}).`);
-        }
-
+        const previousItems = items;
+        const previousEdits = edits;
+        // Optimistic UI: remove the row immediately, then roll back only on failure.
         setItems((old) => old.filter((row) => row.id !== item.id));
         setEdits((old) => {
           const next = { ...old };
           delete next[item.id];
           return next;
         });
-        setMessage(`Đã xóa mã ${item.product_code}.`);
+        try {
+          const response = await fetch(
+            `/api/scan/${session?.id}/items/${item.id}`,
+            { method: "DELETE" }
+          );
+          const json = await readApiResponse(response);
+          if (!response.ok) throw new Error(json.error || `Không xóa được (HTTP ${response.status}).`);
+          setMessage(`Đã xóa mã ${item.product_code}.`);
+        } catch (deleteError) {
+          setItems(previousItems);
+          setEdits(previousEdits);
+          throw deleteError;
+        }
       },
     });
   }
@@ -693,6 +743,31 @@ export default function ScanBarcodeClient({
 
     stopCamera();
     await createSession();
+  }
+
+  function deleteSession(row: ScanSession) {
+    setConfirmDialog({
+      title: "Xóa phiên kiểm hàng?",
+      description: `Xóa phiên ngày ${dateLabel(row.created_at)} và toàn bộ sản phẩm bên trong? Không thể khôi phục.`,
+      confirmLabel: "Xóa phiên",
+      danger: true,
+      onConfirm: async () => {
+        const response = await fetch(`/api/scan/${row.id}`, { method: "DELETE" });
+        const json = await readApiResponse(response);
+        if (!response.ok) throw new Error(json.error || "Không thể xóa phiên.");
+        const remaining = sessions.filter((item) => item.id !== row.id);
+        setSessions(remaining);
+        if (session?.id === row.id) {
+          stopCamera();
+          activeSessionIdRef.current = null;
+          setSession(null);
+          setItems([]);
+          if (remaining.length) await loadSession(remaining[0].id);
+          else await createSession();
+        }
+        setMessage("Đã xóa phiên kiểm hàng.");
+      },
+    });
   }
 
   function newSession() {
@@ -868,29 +943,65 @@ async function downloadExcel() {
         </div>
 
         <div className="scan-toolbar">
-          <label className="scan-session-select">
-            <span>Phiên kiểm hàng / lịch sử</span>
-            <select
-              value={session?.id || ""}
+          <div className="scan-session-module" ref={sessionPanelRef}>
+            <button
+              type="button"
+              className="scan-session-module-trigger"
+              aria-expanded={sessionPanelOpen}
+              onClick={() => setSessionPanelOpen((open) => !open)}
               disabled={busy}
-              onChange={(e) => {
-                stopCamera();
-                loadSession(e.target.value).catch((err) =>
-                  setError(err.message)
-                );
-              }}
             >
-              {sessions.map((row) => (
-                <option key={row.id} value={row.id}>
-                  {dateLabel(row.created_at)} ·{" "}
-                  {row.username_snapshot} ·{" "}
-                  {row.status === "DRAFT"
-                    ? "Đang kiểm"
-                    : "Đã lưu"}
-                </option>
-              ))}
-            </select>
-          </label>
+              <span>PHIÊN KIỂM / LỊCH SỬ</span>
+              <span aria-hidden="true">{sessionPanelOpen ? "▴" : "▾"}</span>
+            </button>
+            {sessionPanelOpen && (
+              <>
+                <section className="scan-session-module-panel" aria-label="Các phiên kiểm được phép truy cập">
+                  <div className="scan-session-module-heading">
+                    <div>
+                      <strong>DANH SÁCH PHIÊN KIỂM</strong>
+                      <small>Các phiên theo quyền tài khoản</small>
+                    </div>
+                    <span className="scan-session-module-count" aria-label={`${sessions.length} phiên kiểm`}>{sessions.length}</span>
+                  </div>
+                  {sessions.length === 0 ? (
+                    <p className="scan-session-module-empty">Chưa có phiên kiểm.</p>
+                  ) : (
+                    <div className="scan-session-module-list">
+                      {sessions.map((row) => (
+                        <div key={row.id} className={`scan-session-module-row ${session?.id === row.id ? "active" : ""}`}>
+                          <button
+                            type="button"
+                            className="scan-session-module-select"
+                            onClick={() => {
+                              stopCamera();
+                              setSessionPanelOpen(false);
+                              loadSession(row.id)
+                                .then(() => setMessage(`Đã mở phiên kiểm của ${row.username_snapshot}.`))
+                                .catch((err) => setError(err.message));
+                            }}
+                          >
+                            <strong>{row.username_snapshot}</strong>
+                            <span>{dateLabel(row.created_at)}</span>
+                            <small>{row.status === "DRAFT" ? "Đang kiểm" : "Đã lưu"}{session?.id === row.id ? " · ĐANG MỞ" : ""}</small>
+                          </button>
+                          {row.user_id === userId && (
+                            <button
+                              type="button"
+                              className="scan-session-module-delete"
+                              onClick={() => deleteSession(row)}
+                              disabled={busy}
+                              aria-label={`Xóa phiên ${dateLabel(row.created_at)}`}
+                            >Xóa</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
+          </div>
 
           <div className="scan-toolbar-actions">
             <button

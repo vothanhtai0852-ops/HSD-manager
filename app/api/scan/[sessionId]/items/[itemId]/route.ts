@@ -15,7 +15,8 @@ type Context = {
 async function checkItemAccess(
   actor: ScanActor,
   sessionId: string,
-  itemId: string
+  itemId: string,
+  checkItem = true
 ) {
   const access = await getScanSession(actor, sessionId);
 
@@ -47,20 +48,22 @@ async function checkItemAccess(
     );
   }
 
+  if (checkItem) {
   const { data, error } = await supabaseServer
-    .from("scan_items")
-    .select("id")
-    .eq("id", itemId)
-    .eq("session_id", sessionId)
-    .maybeSingle();
-
-  if (error) throw error;
-
-  if (!data) {
-    return NextResponse.json(
-      { error: "Không tìm thấy sản phẩm trong phiên." },
-      { status: 404 }
-    );
+      .from("scan_items")
+      .select("id")
+      .eq("id", itemId)
+      .eq("session_id", sessionId)
+      .maybeSingle();
+  
+    if (error) throw error;
+  
+    if (!data) {
+      return NextResponse.json(
+        { error: "Không tìm thấy sản phẩm trong phiên." },
+        { status: 404 }
+      );
+    }
   }
 
   return null;
@@ -150,7 +153,8 @@ export async function DELETE(
     const denied = await checkItemAccess(
       auth.actor,
       sessionId,
-      itemId
+      itemId,
+      false
     );
 
     if (denied) return denied;

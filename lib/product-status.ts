@@ -114,6 +114,24 @@ export function calculateExpiryPercent(
   return Math.round(clampedPercent * 100) / 100;
 }
 
+
+/** First Vietnam calendar date on which remaining shelf-life percentage
+ * becomes <= the owner's configured threshold. Uses date-only UTC arithmetic. */
+export function calculateThresholdDate(
+  manufactureDate: string | null,
+  expiryDate: string | null,
+  thresholdPercent: number
+): string | null {
+  const manufacture = parseDateOnly(manufactureDate);
+  const expiry = parseDateOnly(expiryDate);
+  if (manufacture === null || expiry === null || expiry <= manufacture) return null;
+  if (!Number.isFinite(thresholdPercent) || thresholdPercent < 0 || thresholdPercent > 100) return null;
+  const totalDays = (expiry - manufacture) / 86400000;
+  const elapsedDays = Math.ceil(totalDays * (1 - thresholdPercent / 100));
+  const target = new Date(manufacture + elapsedDays * 86400000);
+  return `${target.getUTCFullYear()}-${String(target.getUTCMonth()+1).padStart(2,'0')}-${String(target.getUTCDate()).padStart(2,'0')}`;
+}
+
 export function getProductStatus(
   input: ProductStatusInput,
   today = getVietnamToday()

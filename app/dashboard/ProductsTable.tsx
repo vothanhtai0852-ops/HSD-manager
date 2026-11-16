@@ -21,8 +21,7 @@ type ProductStatus =
 
 type SortOption =
   | "NEWEST"
-  | "TEN_ASC"
-  | "TEN_DESC"
+  | "TODAY"
   | "PERCENT_ASC"
   | "PERCENT_DESC"
   | "HSD_ASC"
@@ -42,6 +41,8 @@ type Product = {
   sale_price: number | null;
   alert_sent: boolean;
   threshold_percent: number;
+  threshold_date: string | null;
+  today_reason?: string;
   percent_remaining: number | null;
   status: ProductStatus;
   owner: {
@@ -132,8 +133,7 @@ const SORT_OPTIONS: Array<{
   label: string;
 }> = [
   { value: "NEWEST", label: "Mới nhất" },
-  { value: "TEN_ASC", label: "Tên A → Z" },
-  { value: "TEN_DESC", label: "Tên Z → A" },
+  { value: "TODAY", label: "Hôm nay" },
   { value: "PERCENT_ASC", label: "% HSD tăng dần" },
   { value: "PERCENT_DESC", label: "% HSD giảm dần" },
   { value: "HSD_ASC", label: "HSD gần nhất" },
@@ -396,6 +396,7 @@ function buildExcelRows(products: Product[]) {
     "Số lượng": product.quantity,
     "Giá bán": product.sale_price ?? "",
     "% còn lại": product.percent_remaining ?? "",
+    "Ngày báo date": formatDate(product.threshold_date),
     "Trạng thái": formatStatusLabel(product.status),
     Note: product.note ?? "",
     "Ghi chú": product.description ?? "",
@@ -441,6 +442,9 @@ export default function ProductsTable() {
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
+  const [todayProducts, setTodayProducts] = useState<Product[]>([]);
+  const [showTodayNotice, setShowTodayNotice] = useState(false);
+  const [showTodayPanel, setShowTodayPanel] = useState(false);
 
   const hasLoadedOnceRef = useRef(false);
   const requestControllerRef = useRef<AbortController | null>(null);
@@ -479,6 +483,25 @@ export default function ProductsTable() {
       sort,
     });
   }, [page, pageSize, debouncedSearch, selectedUserId, selectedStatus, sort]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const query = buildQueryString({ page: 1, pageSize: 200, search: "", userId: "", status: "", sort: "TODAY", exportAll: true });
+        const response = await fetch(`/api/products?${query}`, { cache: "no-store" });
+        const data = await response.json() as ProductsResponse;
+        if (!cancelled && response.ok && data.success) {
+          setTodayProducts(data.products);
+          if (data.products.length && !sessionStorage.getItem("hsd:today-notice-shown")) {
+            setShowTodayNotice(true);
+            sessionStorage.setItem("hsd:today-notice-shown", "1");
+          }
+        }
+      } catch { /* Notification is supplementary; do not block dashboard. */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -1356,6 +1379,9 @@ export default function ProductsTable() {
                       ? ` (${product.owner.username})`
                       : ""}
                   </div>
+                  <div className="mt-1 text-[11px] font-semibold text-rose-700">
+                    Ngày báo date: {formatDate(product.threshold_date)}
+                  </div>
                 </div>
 
                 <div className="col-span-2 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-slate-200 px-3 py-2.5 xl:col-span-1 xl:border-l-0 xl:border-r xl:border-t-0">
@@ -1604,6 +1630,25 @@ export default function ProductsTable() {
                 Chỉ xem trước 25 dòng đầu. File thực tế có {importRows.length} dòng.
               </div>
             )}
+          </div>
+        </div>
+      )}
+      <button type="button" onClick={() => setShowTodayPanel((value) => !value)} className="fixed bottom-5 right-5 z-40 rounded-full bg-rose-600 px-4 py-3 text-sm font-extrabold text-white shadow-xl">
+        Hôm nay ({todayProducts.length})
+      </button>
+      {showTodayPanel && (
+        <div className="fixed bottom-20 right-5 z-50 max-h-[65vh] w-[min(92vw,380px)] overflow-auto rounded-xl border border-slate-200 bg-white p-4 shadow-2xl">
+          <div className="mb-3 flex items-center justify-between"><strong>Sản phẩm chạm ngưỡng hôm nay</strong><button type="button" onClick={() => setShowTodayPanel(false)}>Đóng</button></div>
+          {todayProducts.length ? todayProducts.map((item) => <div key={item.id} className="border-t py-2 text-sm"><strong>{item.product_code}</strong> · {item.product_name}<div className="text-xs text-slate-500">{item.today_reason || `Ngưỡng ${item.threshold_percent}%`} · {formatDate(item.threshold_date)}</div></div>) : <p className="text-sm text-slate-500">Không có sản phẩm chạm ngưỡng hôm nay.</p>}
+        </div>
+      )}
+      {showTodayNotice && todayProducts.length > 0 && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4" onClick={() => setShowTodayNotice(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <h3 className="text-lg font-extrabold text-slate-900">Sản phẩm chạm ngưỡng hôm nay</h3>
+            <p className="mt-1 text-sm text-slate-600">Có {todayProducts.length} sản phẩm cần chú ý.</p>
+            <div className="mt-3 max-h-60 overflow-auto">{todayProducts.slice(0, 20).map((item) => <div key={item.id} className="border-t py-2 text-sm"><strong>{item.product_code}</strong> · {item.product_name}<div className="text-xs text-slate-500">{item.today_reason || "Cần chú ý hôm nay"}</div></div>)}</div>
+            <button type="button" className="mt-4 w-full rounded-lg bg-rose-600 px-4 py-2 font-bold text-white" onClick={() => setShowTodayNotice(false)}>Đã xem</button>
           </div>
         </div>
       )}

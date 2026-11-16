@@ -8,7 +8,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 
 import { verifySessionToken } from "@/lib/session";
 
-import { getProductStatus } from "@/lib/product-status";
+import { getProductStatus, calculateThresholdDate } from "@/lib/product-status";
 
 
 
@@ -598,9 +598,7 @@ export async function GET(request: Request) {
 
       "NEWEST",
 
-      "TEN_ASC",
-
-      "TEN_DESC",
+      "TODAY",
 
       "PERCENT_ASC",
 
@@ -1593,6 +1591,12 @@ export async function GET(request: Request) {
 
                 .percentRemaining,
 
+            threshold_date: calculateThresholdDate(
+              product.manufacture_date,
+              product.expiry_date,
+              thresholdPercent
+            ),
+
 
 
             status:
@@ -2095,6 +2099,43 @@ export async function GET(request: Request) {
 
 
 
+    if (requestedSort === "TODAY") {
+      const todayStart = new Date(`${vietnamToday}T00:00:00+07:00`).toISOString();
+      const tomorrowDate = new Date(Date.parse(`${vietnamToday}T00:00:00Z`) + 86400000);
+      const tomorrowIsoDate = `${tomorrowDate.getUTCFullYear()}-${String(tomorrowDate.getUTCMonth() + 1).padStart(2, "0")}-${String(tomorrowDate.getUTCDate()).padStart(2, "0")}`;
+      const tomorrowStart = new Date(`${tomorrowIsoDate}T00:00:00+07:00`).toISOString();
+      const scopedProductIds = filteredProducts.map((product) => product.id);
+      let alertedProductIds = new Set<string>();
+      if (scopedProductIds.length) {
+        const { data: sentTodayLogs, error: logsError } = await supabaseServer
+          .from("alert_logs")
+          .select("product_id")
+          .in("product_id", scopedProductIds)
+          .eq("delivery_status", "SENT")
+          .gte("sent_at", todayStart)
+          .lt("sent_at", tomorrowStart);
+        if (logsError) {
+          console.error("PRODUCTS_TODAY_ALERT_LOGS_ERROR:", logsError);
+        } else {
+          alertedProductIds = new Set((sentTodayLogs ?? []).map((row) => row.product_id));
+        }
+      }
+      filteredProducts = filteredProducts
+        .filter((product) =>
+          product.threshold_date === vietnamToday ||
+          product.expiry_date === vietnamToday ||
+          alertedProductIds.has(product.id)
+        )
+        .map((product) => ({
+          ...product,
+          today_reason: alertedProductIds.has(product.id)
+            ? "Đã gửi cảnh báo hôm nay"
+            : product.expiry_date === vietnamToday
+              ? "Hết hạn hôm nay"
+              : "Chạm ngưỡng báo date hôm nay",
+        }));
+    }
+
     function compareNullableNumber(
 
       a: number | null,
@@ -2228,82 +2269,6 @@ export async function GET(request: Request) {
           // ----------------------------------------------
 
           // TÊN A -> Z
-
-          // ----------------------------------------------
-
-
-
-          case "TEN_ASC":
-
-            return (
-
-              a.product_name ??
-
-              ""
-
-            ).localeCompare(
-
-              b.product_name ??
-
-                "",
-
-              "vi",
-
-              {
-
-                sensitivity:
-
-                  "base",
-
-              }
-
-            );
-
-
-
-
-
-          // ----------------------------------------------
-
-          // TÊN Z -> A
-
-          // ----------------------------------------------
-
-
-
-          case "TEN_DESC":
-
-            return (
-
-              b.product_name ??
-
-              ""
-
-            ).localeCompare(
-
-              a.product_name ??
-
-                "",
-
-              "vi",
-
-              {
-
-                sensitivity:
-
-                  "base",
-
-              }
-
-            );
-
-
-
-
-
-          // ----------------------------------------------
-
-          // % HSD THẤP -> CAO
 
           // ----------------------------------------------
 
