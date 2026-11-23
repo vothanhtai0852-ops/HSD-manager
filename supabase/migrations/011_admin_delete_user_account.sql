@@ -1,5 +1,7 @@
 -- Let an active ADMIN permanently remove any USER or MANAGER and all data
 -- that would otherwise block deletion. The work is atomic in one transaction.
+drop function if exists public.admin_delete_user_account(uuid, uuid);
+
 create or replace function public.admin_delete_user_account(
   p_admin_user_id uuid,
   p_target_user_id uuid
@@ -79,3 +81,5 @@ revoke all on function public.admin_delete_user_account(uuid, uuid)
   from public, anon, authenticated;
 grant execute on function public.admin_delete_user_account(uuid, uuid)
   to service_role;
+
+notify pgrst, 'reload schema';

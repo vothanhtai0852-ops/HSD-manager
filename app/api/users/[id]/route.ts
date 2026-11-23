@@ -622,9 +622,10 @@ export async function DELETE(
 
     if (error) {
       if (error.code === "PGRST202") {
-        console.error("ADMIN_DELETE_USER_MIGRATION_MISSING:", error);
+        console.error("ADMIN_DELETE_USER_RPC_NOT_FOUND:", error);
+        const rpcDetails = error.details || error.hint;
         return NextResponse.json(
-          { error: "Ch\u01b0a c\u00e0i h\u00e0m x\u00f3a t\u00e0i kho\u1ea3n tr\u00ean Supabase. H\u00e3y ch\u1ea1y migration 011_admin_delete_user_account.sql." },
+          { error: `Supabase Data API ch\u01b0a nh\u1eadn h\u00e0m x\u00f3a t\u00e0i kho\u1ea3n. Ki\u1ec3m tra migration 011, ch\u1eef k\u00fd h\u00e0m v\u00e0 project Supabase.${rpcDetails ? ` Chi ti\u1ebft: ${rpcDetails}` : ""}` },
           { status: 503 }
         );
       }
