@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -6,6 +5,7 @@ import { verifySessionToken } from "@/lib/session";
 import { supabaseServer } from "@/lib/supabase-server";
 
 import UserManagement from "./UserManagement";
+import ModuleMenu from "../ModuleMenu";
 
 export default async function UsersPage() {
   const cookieStore = await cookies();
@@ -48,6 +48,7 @@ export default async function UsersPage() {
   return (
     <main className="kk-page">
       <header
+        className="dashboard-module-header"
         style={{
           marginBottom: "18px",
           padding: "16px 18px",
@@ -100,25 +101,12 @@ export default async function UsersPage() {
               {user.role}
             </div>
           </div>
-
-          <Link
-            href="/dashboard"
-            style={{
-              display: "inline-flex",
-              minHeight: "40px",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "8px 14px",
-              borderRadius: "8px",
-              background: "#ffffff",
-              color: "var(--kk-red)",
-              fontWeight: 800,
-              textDecoration: "none",
-            }}
-          >
-            ← Quay lại Dashboard
-          </Link>
         </div>
+        <ModuleMenu
+          username={user.username}
+          role={user.role}
+          currentDisplayName={user.display_name ?? ""}
+        />
       </header>
 
       <div

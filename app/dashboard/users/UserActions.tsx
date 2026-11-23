@@ -84,7 +84,10 @@ export default function UserActions({
    * Không cho ADMIN tự xóa chính mình.
    */
   const canDeleteUser =
-    isAdmin && !isSelf;
+    isAdmin &&
+    !isSelf &&
+    (user.role === "USER" ||
+      user.role === "MANAGER");
 
   const [editing, setEditing] =
     useState(false);
@@ -171,8 +174,7 @@ export default function UserActions({
     const confirmed =
       window.confirm(
         `Xóa tài khoản "${user.username}"?\n\n` +
-        "Tài khoản chỉ được xóa hẳn nếu không còn dữ liệu HSD, lịch sử gửi cảnh báo hoặc dữ liệu ràng buộc. " +
-        "Nếu đã có dữ liệu, hệ thống sẽ yêu cầu khóa tài khoản thay vì xóa."
+        "Hệ thống sẽ xóa tài khoản cùng dữ liệu HSD, lịch sử cảnh báo, Gmail liên kết, phiên kiểm và dữ liệu liên quan."
       );
 
     if (!confirmed) {
@@ -864,7 +866,7 @@ export default function UserActions({
           >
             {deletingUser
               ? "Đang xóa..."
-              : "Xóa User"}
+              : "Xóa tài khoản"}
           </button>
         )}
       </div>
@@ -1169,31 +1171,9 @@ export default function UserActions({
                             key={
                               item.id
                             }
-                            style={{
-                              display:
-                                "grid",
-                              gridTemplateColumns:
-                                "minmax(0, 1fr) auto",
-                              gap:
-                                "10px",
-                              alignItems:
-                                "center",
-                              padding:
-                                "10px",
-                              border:
-                                "1px solid var(--border)",
-                              borderRadius:
-                                "9px",
-                              background:
-                                "var(--surface-soft)",
-                            }}
+                            className="user-email-row"
                           >
-                            <div
-                              style={{
-                                minWidth:
-                                  0,
-                              }}
-                            >
+                            <div className="user-email-content">
                               {isEditing ? (
                                 <input
                                   type="email"
@@ -1219,12 +1199,7 @@ export default function UserActions({
                                 />
                               ) : (
                                 <div
-                                  style={{
-                                    overflowWrap:
-                                      "anywhere",
-                                    fontWeight:
-                                      700,
-                                  }}
+                                  className="user-email-value"
                                 >
                                   {
                                     item.email
@@ -1232,20 +1207,7 @@ export default function UserActions({
                                 </div>
                               )}
 
-                              <div
-                                style={{
-                                  display:
-                                    "flex",
-                                  gap:
-                                    "6px",
-                                  flexWrap:
-                                    "wrap",
-                                  marginTop:
-                                    "5px",
-                                  fontSize:
-                                    "12px",
-                                }}
-                              >
+                              <div className="user-email-badges">
                                 {item.isPrimary && (
                                   <span
                                     className="kk-badge kk-badge-warning"
@@ -1268,18 +1230,7 @@ export default function UserActions({
                               </div>
                             </div>
 
-                            <div
-                              style={{
-                                display:
-                                  "flex",
-                                gap:
-                                  "6px",
-                                flexWrap:
-                                  "wrap",
-                                justifyContent:
-                                  "flex-end",
-                              }}
-                            >
+                            <div className="user-email-actions">
                               {isEditing ? (
                                 <>
                                   <button
@@ -1391,16 +1342,7 @@ export default function UserActions({
                   )}
                 </div>
 
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      "minmax(0, 1fr) auto",
-                    gap: "8px",
-                    marginTop:
-                      "10px",
-                  }}
-                >
+                <div className="user-email-add">
                   <input
                     type="email"
                     placeholder="Thêm Gmail mới..."

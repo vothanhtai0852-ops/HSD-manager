@@ -203,9 +203,12 @@ function isValidUsername(
 // ======================================================
 
 export async function GET() {
+  const requestStartedAt = performance.now();
+  const authStartedAt = performance.now();
   try {
     const auth =
       await getCurrentUser();
+    const authDurationMs = performance.now() - authStartedAt;
 
     if (auth.error) {
       return auth.error;
@@ -401,6 +404,10 @@ export async function GET() {
       ),
     ];
 
+    const usersById = new Map(users.map((user) => [user.id, user]));
+    const missingParentIds = parentIds.filter((id) => !usersById.has(id));
+    const relationsStartedAt = performance.now();
+
     const [emailResult, parentResult] = await Promise.all([
       userIds.length > 0
         ? supabaseServer
@@ -409,11 +416,11 @@ export async function GET() {
             .in("user_id", userIds)
             .order("is_primary", { ascending: false })
         : Promise.resolve({ data: [], error: null }),
-      parentIds.length > 0
+      missingParentIds.length > 0
         ? supabaseServer
             .from("users")
             .select("id, username, display_name")
-            .in("id", parentIds)
+            .in("id", missingParentIds)
         : Promise.resolve({ data: [], error: null }),
     ]);
 
@@ -445,6 +452,13 @@ export async function GET() {
       string,
       { username: string; display_name: string | null }
     >();
+
+    for (const user of usersById.values()) {
+      parentMap.set(user.id, {
+        username: user.username,
+        display_name: user.display_name,
+      });
+    }
 
     for (const parent of parentResult.data ?? []) {
       parentMap.set(parent.id, {
@@ -534,6 +548,11 @@ export async function GET() {
         "ADMIN",
 
       users: result,
+    }, {
+      headers: {
+        "Server-Timing":
+          `auth;dur=${authDurationMs.toFixed(1)}, relations;dur=${(performance.now() - relationsStartedAt).toFixed(1)}, total;dur=${(performance.now() - requestStartedAt).toFixed(1)}`,
+      },
     });
   } catch (error) {
     console.error(

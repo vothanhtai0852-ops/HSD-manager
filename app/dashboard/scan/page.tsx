@@ -16,5 +16,5 @@ export default async function ScanPage() {
     .select("id, username, role, active, display_name")
     .eq("id", session.userId).maybeSingle();
   if (error || !user || !user.active) redirect("/login");
-  return <main className="kk-page scan-page"><ScanBarcodeClient username={user.display_name || user.username} userId={user.id} /></main>;
+  return <main className="kk-page scan-page"><ScanBarcodeClient username={user.display_name || user.username} userId={user.id} role={user.role} displayName={user.display_name ?? ""} /></main>;
 }

@@ -76,6 +76,7 @@ type ManagerEmployeesResponse = {
 export default function UserManagement() {
   const [users, setUsers] =
     useState<UserItem[]>([]);
+  const [userSearch, setUserSearch] = useState("");
 
   const [
     currentUser,
@@ -256,6 +257,16 @@ export default function UserManagement() {
           ),
       [users]
     );
+
+  const filteredUsers = useMemo(() => {
+    const keyword = userSearch.trim().toLocaleLowerCase("vi");
+    if (!keyword) return users;
+
+    return users.filter((user) =>
+      [user.username, user.displayName ?? "", ...user.emails.map((item) => item.email)]
+        .some((value) => value.toLocaleLowerCase("vi").includes(keyword))
+    );
+  }, [users, userSearch]);
 
   function getPrimaryEmail(
     user: UserItem
@@ -878,6 +889,16 @@ export default function UserManagement() {
               </strong>
             </p>
           </div>
+          <label className="user-list-search">
+            <span className="sr-only">Tìm tài khoản</span>
+            <input
+              type="search"
+              value={userSearch}
+              onChange={(event) => setUserSearch(event.target.value)}
+              placeholder="Tìm username, tên hiển thị hoặc Gmail..."
+              aria-label="Tìm username, tên hiển thị hoặc Gmail"
+            />
+          </label>
         </div>
 
         <div className="user-table-desktop">
@@ -898,7 +919,7 @@ export default function UserManagement() {
 
               <tbody>
                 {!loading &&
-                users.length === 0 ? (
+                filteredUsers.length === 0 ? (
                   <tr>
                     <td
                       colSpan={8}
@@ -908,7 +929,7 @@ export default function UserManagement() {
                     </td>
                   </tr>
                 ) : (
-                  users.map(
+                  filteredUsers.map(
                     (user) => (
                       <tr
                         key={user.id}
@@ -990,12 +1011,12 @@ export default function UserManagement() {
 
         <div className="user-card-list">
           {!loading &&
-          users.length === 0 ? (
+          filteredUsers.length === 0 ? (
             <div className="empty-card">
               Không có tài khoản.
             </div>
           ) : (
-            users.map((user) => (
+            filteredUsers.map((user) => (
               <article
                 className="user-card"
                 key={user.id}

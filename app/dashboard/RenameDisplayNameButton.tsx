@@ -3,9 +3,12 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
-type Props = { currentDisplayName: string };
+type Props = {
+  currentDisplayName: string;
+  className?: string;
+};
 
-export default function RenameDisplayNameButton({ currentDisplayName }: Props) {
+export default function RenameDisplayNameButton({ currentDisplayName, className }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [displayName, setDisplayName] = useState(currentDisplayName);
@@ -49,13 +52,11 @@ export default function RenameDisplayNameButton({ currentDisplayName }: Props) {
   }
 
   return <>
-    <button type="button" onClick={() => {
+    <button type="button" className={className} onClick={() => {
       setDisplayName(currentDisplayName);
       setError(""); setSuccess(""); setOpen(true);
     }} aria-label="Đổi tên hiển thị" title="Đổi tên hiển thị"
-      style={{ minHeight: "38px", padding: "8px 12px", background: "#ffffff",
-        color: "#171717", border: "1px solid rgba(255,255,255,0.75)",
-        borderRadius: "8px", fontWeight: 800, whiteSpace: "nowrap" }}>
+    >
       Đổi tên hiển thị
     </button>
     {open && <div className="kk-modal-backdrop" onMouseDown={(event) => {

@@ -139,6 +139,8 @@ function normalizeOptionalText(
 
 
 export async function GET(request: Request) {
+  const requestStartedAt = performance.now();
+  let productBatchDurationMs = 0;
 
   try {
 
@@ -571,6 +573,9 @@ export async function GET(request: Request) {
 
     const exportAll =
       searchParams.get("export") === "1";
+
+    const includeTodaySummary =
+      searchParams.get("includeToday") === "1";
 
 
 
@@ -1446,6 +1451,7 @@ export async function GET(request: Request) {
 
     // Fetch the first two product batches concurrently. This removes one
     // complete Supabase round-trip for installations with 1,001–2,000 rows.
+    const productBatchStartedAt = performance.now();
     const [firstResult, secondResult] = await Promise.all([
       firstQuery,
       buildProductBatch(batchSize),
@@ -1497,6 +1503,7 @@ export async function GET(request: Request) {
         appendProductRows(result.data);
       }
     }
+    productBatchDurationMs = performance.now() - productBatchStartedAt;
 
     // One date snapshot per request keeps every row's HSD status consistent.
     const vietnamToday = getVietnamToday();
@@ -2104,13 +2111,11 @@ export async function GET(request: Request) {
       const tomorrowDate = new Date(Date.parse(`${vietnamToday}T00:00:00Z`) + 86400000);
       const tomorrowIsoDate = `${tomorrowDate.getUTCFullYear()}-${String(tomorrowDate.getUTCMonth() + 1).padStart(2, "0")}-${String(tomorrowDate.getUTCDate()).padStart(2, "0")}`;
       const tomorrowStart = new Date(`${tomorrowIsoDate}T00:00:00+07:00`).toISOString();
-      const scopedProductIds = filteredProducts.map((product) => product.id);
       let alertedProductIds = new Set<string>();
-      if (scopedProductIds.length) {
+      if (filteredProducts.length) {
         const { data: sentTodayLogs, error: logsError } = await supabaseServer
           .from("alert_logs")
           .select("product_id")
-          .in("product_id", scopedProductIds)
           .eq("delivery_status", "SENT")
           .gte("sent_at", todayStart)
           .lt("sent_at", tomorrowStart);
@@ -2121,6 +2126,50 @@ export async function GET(request: Request) {
         }
       }
       filteredProducts = filteredProducts
+        .filter((product) =>
+          product.threshold_date === vietnamToday ||
+          product.expiry_date === vietnamToday ||
+          alertedProductIds.has(product.id)
+        )
+        .map((product) => ({
+          ...product,
+          today_reason: alertedProductIds.has(product.id)
+            ? "Đã gửi cảnh báo hôm nay"
+            : product.expiry_date === vietnamToday
+              ? "Hết hạn hôm nay"
+              : "Chạm ngưỡng báo date hôm nay",
+        }));
+    }
+
+    let todayProductsSummary: Array<
+      (typeof productsWithStatus)[number] & { today_reason: string }
+    > = [];
+
+    if (includeTodaySummary) {
+      const todayStart = new Date(`${vietnamToday}T00:00:00+07:00`).toISOString();
+      const tomorrowDate = new Date(
+        Date.parse(`${vietnamToday}T00:00:00Z`) + 86400000
+      );
+      const tomorrowIsoDate = `${tomorrowDate.getUTCFullYear()}-${String(tomorrowDate.getUTCMonth() + 1).padStart(2, "0")}-${String(tomorrowDate.getUTCDate()).padStart(2, "0")}`;
+      const tomorrowStart = new Date(`${tomorrowIsoDate}T00:00:00+07:00`).toISOString();
+      let alertedProductIds = new Set<string>();
+
+      if (productsWithStatus.length) {
+        const { data: sentTodayLogs, error: logsError } = await supabaseServer
+          .from("alert_logs")
+          .select("product_id")
+          .eq("delivery_status", "SENT")
+          .gte("sent_at", todayStart)
+          .lt("sent_at", tomorrowStart);
+
+        if (logsError) {
+          console.error("PRODUCTS_TODAY_SUMMARY_ERROR:", logsError);
+        } else {
+          alertedProductIds = new Set((sentTodayLogs ?? []).map((row) => row.product_id));
+        }
+      }
+
+      todayProductsSummary = productsWithStatus
         .filter((product) =>
           product.threshold_date === vietnamToday ||
           product.expiry_date === vietnamToday ||
@@ -2593,7 +2642,12 @@ export async function GET(request: Request) {
 
 
       products,
-
+      ...(includeTodaySummary ? { todayProducts: todayProductsSummary } : {}),
+    }, {
+      headers: {
+        "Server-Timing":
+          `product-batches;dur=${productBatchDurationMs.toFixed(1)}, total;dur=${(performance.now() - requestStartedAt).toFixed(1)}`,
+      },
     });
 
   } catch (error) {

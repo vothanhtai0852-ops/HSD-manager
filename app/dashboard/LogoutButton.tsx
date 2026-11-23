@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export default function LogoutButton() {
+export default function LogoutButton({ className }: { className?: string }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
@@ -29,6 +29,8 @@ export default function LogoutButton() {
   return (
     <button
       type="button"
+      className={className}
+      title="Đăng xuất"
       onClick={handleLogout}
       disabled={loading}
     >

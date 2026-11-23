@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -6,6 +5,7 @@ import { verifySessionToken } from "@/lib/session";
 import { supabaseServer } from "@/lib/supabase-server";
 
 import CatalogImportClient from "./CatalogImportClient";
+import ModuleMenu from "../ModuleMenu";
 
 export default async function CatalogPage() {
   const cookieStore = await cookies();
@@ -21,22 +21,18 @@ export default async function CatalogPage() {
     redirect("/login");
   }
 
-  const {
-    data: user,
-    error: userError,
-  } = await supabaseServer
-    .from("users")
-    .select(
-      `
-        id,
-        username,
-        display_name,
-        role,
-        active
-      `
-    )
-    .eq("id", session.userId)
-    .maybeSingle();
+  const [userResult, countResult] = await Promise.all([
+    supabaseServer
+      .from("users")
+      .select("id, username, display_name, role, active")
+      .eq("id", session.userId)
+      .maybeSingle(),
+    supabaseServer
+      .from("product_catalog")
+      .select("id", { count: "exact", head: true }),
+  ]);
+
+  const { data: user, error: userError } = userResult;
 
   if (userError || !user || !user.active) {
     redirect("/login");
@@ -46,15 +42,7 @@ export default async function CatalogPage() {
     redirect("/dashboard");
   }
 
-  const {
-    count,
-    error: countError,
-  } = await supabaseServer
-    .from("product_catalog")
-    .select("id", {
-      count: "exact",
-      head: true,
-    });
+  const { count, error: countError } = countResult;
 
   if (countError) {
     console.error(
@@ -66,6 +54,7 @@ export default async function CatalogPage() {
   return (
     <main className="kk-page">
       <header
+        className="dashboard-module-header"
         style={{
           marginBottom: "18px",
           padding: "16px 18px",
@@ -116,25 +105,12 @@ export default async function CatalogPage() {
               {" · ADMIN"}
             </div>
           </div>
-
-          <Link
-            href="/dashboard"
-            style={{
-              display: "inline-flex",
-              minHeight: "40px",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "8px 14px",
-              borderRadius: "8px",
-              background: "#ffffff",
-              color: "var(--kk-red)",
-              fontWeight: 800,
-              textDecoration: "none",
-            }}
-          >
-            Quay lại Dashboard
-          </Link>
         </div>
+        <ModuleMenu
+          username={user.username}
+          role={user.role}
+          currentDisplayName={user.display_name ?? ""}
+        />
       </header>
 
       <CatalogImportClient

@@ -42,28 +42,36 @@ type ScanConfirmDialog = {
   onConfirm: () => Promise<void>;
 };
 
-async function readApiResponse(response: Response): Promise<Record<string, any>> {
+type ScanApiResponse = {
+  error?: string;
+  sessions?: ScanSession[];
+  session: ScanSession;
+  items?: ScanItem[];
+  item: ScanItem;
+};
+
+async function readApiResponse(response: Response): Promise<ScanApiResponse> {
   const raw = await response.text();
   if (!raw.trim()) {
     return {
       error: `Máy chủ không trả nội dung (HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}).`,
-    };
+    } as ScanApiResponse;
   }
 
   try {
     const parsed: unknown = JSON.parse(raw);
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, any>;
+      return parsed as ScanApiResponse;
     }
-    return { error: "Phản hồi API không đúng định dạng." };
+    return { error: "Phản hồi API không đúng định dạng." } as ScanApiResponse;
   } catch {
     const looksLikeHtml = /<!doctype html|<html[\s>]/i.test(raw);
     if (looksLikeHtml) {
       return {
         error: `Máy chủ trả về trang HTML thay vì dữ liệu API (HTTP ${response.status}). Có thể route chưa được deploy đúng hoặc đường dẫn API không tồn tại.`,
-      };
+      } as ScanApiResponse;
     }
-    return { error: `Phản hồi API không hợp lệ (HTTP ${response.status}).` };
+    return { error: `Phản hồi API không hợp lệ (HTTP ${response.status}).` } as ScanApiResponse;
   }
 }
 
@@ -77,9 +85,13 @@ const dateLabel = (value: string) =>
 export default function ScanBarcodeClient({
   username,
   userId,
+  role,
+  displayName,
 }: {
   username: string;
   userId: string;
+  role: "ADMIN" | "MANAGER" | "USER";
+  displayName: string;
 }) {
   const [sessions, setSessions] = useState<ScanSession[]>([]);
   const [session, setSession] = useState<ScanSession | null>(null);
@@ -108,6 +120,7 @@ export default function ScanBarcodeClient({
   const activeSessionIdRef = useRef<string | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const cameraControlsRef = useRef<CameraControls | null>(null);
+  const cameraStartingRef = useRef(false);
   const scanResetTimerRef = useRef<ReturnType<typeof setInterval> | null>(
     null
   );
@@ -276,6 +289,32 @@ export default function ScanBarcodeClient({
     setCameraOn(false);
     setCameraVisible(false);
     window.setTimeout(() => manualInputRef.current?.focus(), 0);
+  }, []);
+
+  const refocusCamera = useCallback(() => {
+    const video = videoRef.current;
+    const stream = video?.srcObject as MediaStream | null;
+    const track = stream?.getVideoTracks()[0];
+    const capabilities = track?.getCapabilities?.() as
+      | (MediaTrackCapabilities & { focusMode?: string[] })
+      | undefined;
+
+    if (!track || !capabilities?.focusMode?.includes("single-shot")) {
+      setCameraError("Thiết bị không hỗ trợ lấy nét lại bằng trình duyệt. Hãy đưa mã gần camera hơn và giữ yên.");
+      return;
+    }
+
+    setCameraError("");
+    void track
+      .applyConstraints({ advanced: [{ focusMode: "single-shot" } as MediaTrackConstraintSet] })
+      .then(() => {
+        window.setTimeout(() => {
+          if (track.readyState === "live" && capabilities.focusMode?.includes("continuous")) {
+            void track.applyConstraints({ advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet] }).catch(() => {});
+          }
+        }, 900);
+      })
+      .catch(() => setCameraError("Không thể lấy nét lại. Hãy lau ống kính, đưa mã gần hơn hoặc khởi động lại camera."));
   }, []);
 
   useEffect(
@@ -454,6 +493,7 @@ export default function ScanBarcodeClient({
   );
 
   const startCamera = useCallback(async () => {
+    if (cameraStartingRef.current || cameraControlsRef.current) return;
     setCameraError("");
     setCameraVisible(true);
 
@@ -481,6 +521,7 @@ export default function ScanBarcodeClient({
       return;
     }
 
+    cameraStartingRef.current = true;
     try {
       await prepareAudio().catch(() => {});
 
@@ -505,57 +546,100 @@ export default function ScanBarcodeClient({
         delayBetweenScanAttempts: 100,
       });
 
-      let androidMainCameraId: string | undefined;
+      const onDecode = (result: { getText: () => string } | undefined) => {
+        if (!result) return;
+
+        const code = result.getText().trim();
+        if (!code) return;
+
+        const now = Date.now();
+        lastSeenRef.current = now;
+
+        if (code !== lastCodeRef.current) {
+          lastCodeRef.current = code;
+          void addCode(code);
+        }
+      };
+      const environmentConstraints: MediaStreamConstraints = {
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30, max: 30 },
+        },
+      };
+
+      let controls = await reader.decodeFromConstraints(
+        environmentConstraints,
+        videoRef.current,
+        onDecode
+      );
+
+      // Labels become available after camera permission is granted. If Chrome
+      // selected an explicitly ultra-wide lens, switch sequentially to a main
+      // rear camera so two streams are never open at once.
       if (/Android/i.test(navigator.userAgent)) {
         try {
+          const stream = videoRef.current.srcObject as MediaStream | null;
+          const track = stream?.getVideoTracks()[0];
+          const activeDeviceId = track?.getSettings().deviceId;
           const devices = await navigator.mediaDevices.enumerateDevices();
           const cameras = devices.filter((device) => device.kind === "videoinput");
-          const rearCameras = cameras.filter((device) => /back|rear|environment/i.test(device.label));
-          const candidates = rearCameras.length ? rearCameras : cameras;
-          const mainCamera = candidates.find((device) => !/ultra.?wide|ultrawide|0[.,]5x|0\.5/i.test(device.label)) || candidates[0];
-          androidMainCameraId = mainCamera?.deviceId || undefined;
+          const activeCamera = cameras.find((device) => device.deviceId === activeDeviceId);
+          const isUltraWide = /ultra.?wide|ultrawide|0[.,]5x|0\.5/i.test(activeCamera?.label ?? "");
+          const mainRearCamera = cameras.find((device) =>
+            device.deviceId !== activeDeviceId &&
+            /back|rear|environment/i.test(device.label) &&
+            !/ultra.?wide|ultrawide|0[.,]5x|0\.5/i.test(device.label)
+          );
+
+          if (isUltraWide && mainRearCamera) {
+            controls.stop();
+            stream?.getTracks().forEach((track) => track.stop());
+            const mainCameraConstraints: MediaStreamConstraints = {
+              ...environmentConstraints,
+              video: {
+                ...(environmentConstraints.video as MediaTrackConstraints),
+                deviceId: { exact: mainRearCamera.deviceId },
+              },
+            };
+            try {
+              controls = await reader.decodeFromConstraints(
+                mainCameraConstraints,
+                videoRef.current,
+                onDecode
+              );
+            } catch {
+              // Keep scanning on the environment-facing default if a device ID
+              // becomes unavailable between enumeration and camera startup.
+              controls = await reader.decodeFromConstraints(
+                environmentConstraints,
+                videoRef.current,
+                onDecode
+              );
+            }
+          }
         } catch {
-          // Fall back to the browser's environment-facing camera.
+          // Device enumeration is optional; continue with the rear-camera stream.
         }
       }
 
-      const controls = await reader.decodeFromConstraints(
-        {
-          audio: false,
-          video: {
-            ...(androidMainCameraId ? { deviceId: { exact: androidMainCameraId } } : { facingMode: { ideal: "environment" } }),
-            width: { ideal: 960 },
-            height: { ideal: 540 },
-            frameRate: { ideal: 30, max: 30 },
-          },
-        },
-        videoRef.current,
-        (result) => {
-          if (!result) return;
-
-          const code = result.getText().trim();
-          if (!code) return;
-
-          const now = Date.now();
-          lastSeenRef.current = now;
-
-          if (code !== lastCodeRef.current) {
-            lastCodeRef.current = code;
-            void addCode(code);
-          }
-        }
-      );
-
       cameraControlsRef.current = controls;
 
-      // Android browsers may select an ultra-wide rear lens by default.
-      // Request the neutral 1x zoom when the active camera exposes zoom controls.
+      // Prefer continuous autofocus and neutral 1x zoom where the device supports them.
       if (/Android/i.test(navigator.userAgent)) {
         const stream = videoRef.current?.srcObject as MediaStream | null;
         const track = stream?.getVideoTracks()[0];
-        const capabilities = track?.getCapabilities?.() as (MediaTrackCapabilities & { zoom?: { min: number; max: number; step?: number } }) | undefined;
+        const capabilities = track?.getCapabilities?.() as (MediaTrackCapabilities & {
+          zoom?: { min: number; max: number; step?: number };
+          focusMode?: string[];
+        }) | undefined;
         if (track && capabilities?.zoom && capabilities.zoom.min <= 1 && capabilities.zoom.max >= 1) {
           void track.applyConstraints({ advanced: [{ zoom: 1 } as MediaTrackConstraintSet] }).catch(() => {});
+        }
+        if (track && capabilities?.focusMode?.includes("continuous")) {
+          void track.applyConstraints({ advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet] }).catch(() => {});
         }
       }
 
@@ -607,6 +691,8 @@ export default function ScanBarcodeClient({
             : "Không thể mở camera. Kiểm tra HTTPS và quyền camera của trình duyệt."
         );
       }
+    } finally {
+      cameraStartingRef.current = false;
     }
   }, [addCode, stopCamera, prepareAudio]);
 
@@ -901,9 +987,8 @@ async function downloadExcel() {
 
   return (
     <>
-      <header className="scan-topbar">
+      <header className="scan-topbar dashboard-scan-header">
         <div className="scan-topbar-left">
-          <ModuleMenu />
           <div>
             <div className="scan-brand">KINGKONG MART</div>
             <div className="scan-module-title">
@@ -914,9 +999,7 @@ async function downloadExcel() {
             </div>
           </div>
         </div>
-
-       
-        
+        <ModuleMenu username={username} role={role} currentDisplayName={displayName} />
       </header>
 
       <section className="scan-card">
@@ -1099,6 +1182,8 @@ async function downloadExcel() {
               className={cameraOn ? "scan-video active" : "scan-video"}
               muted
               playsInline
+              onClick={refocusCamera}
+              aria-label="Chạm để lấy nét lại camera"
             />
             {!cameraOn && (
               <div className="scan-camera-placeholder">
@@ -1108,6 +1193,7 @@ async function downloadExcel() {
             )}
             {cameraOn && (
               <div className="scan-camera-actions">
+                <button type="button" onClick={refocusCamera}>Lấy nét lại</button>
                 <button type="button" onClick={stopCamera}>Tắt camera</button>
               </div>
             )}

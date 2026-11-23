@@ -82,6 +82,7 @@ type ProductsResponse = {
     totalPages: number;
   };
   products: Product[];
+  todayProducts?: Product[];
 };
 
 type ImportPreviewRow = {
@@ -485,25 +486,6 @@ export default function ProductsTable() {
   }, [page, pageSize, debouncedSearch, selectedUserId, selectedStatus, sort]);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const query = buildQueryString({ page: 1, pageSize: 200, search: "", userId: "", status: "", sort: "TODAY", exportAll: true });
-        const response = await fetch(`/api/products?${query}`, { cache: "no-store" });
-        const data = await response.json() as ProductsResponse;
-        if (!cancelled && response.ok && data.success) {
-          setTodayProducts(data.products);
-          if (data.products.length && !sessionStorage.getItem("hsd:today-notice-shown")) {
-            setShowTodayNotice(true);
-            sessionStorage.setItem("hsd:today-notice-shown", "1");
-          }
-        }
-      } catch { /* Notification is supplementary; do not block dashboard. */ }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebouncedSearch(search.trim());
       setPage(1);
@@ -529,7 +511,10 @@ export default function ProductsTable() {
     try {
       setError("");
 
-      const response = await fetch(`/api/products?${queryString}`, {
+      const requestQuery = new URLSearchParams(queryString);
+      if (firstLoad) requestQuery.set("includeToday", "1");
+
+      const response = await fetch(`/api/products?${requestQuery.toString()}`, {
         method: "GET",
         cache: "no-store",
         signal: controller.signal,
@@ -554,6 +539,14 @@ export default function ProductsTable() {
       setStats(data.stats);
       setTotal(data.pagination.total);
       setTotalPages(Math.max(data.pagination.totalPages || 1, 1));
+      if (firstLoad) {
+        const todaysProducts = data.todayProducts ?? [];
+        setTodayProducts(todaysProducts);
+        if (todaysProducts.length && !sessionStorage.getItem("hsd:today-notice-shown")) {
+          setShowTodayNotice(true);
+          sessionStorage.setItem("hsd:today-notice-shown", "1");
+        }
+      }
       hasLoadedOnceRef.current = true;
 
       if (data.pagination.page !== page) {

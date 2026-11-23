@@ -588,3 +588,67 @@ export async function POST(
     );
   }
 }
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const auth = await getCurrentUser();
+    if (auth.error) return auth.error;
+
+    if (auth.user.role !== "ADMIN") {
+      return NextResponse.json(
+        { error: "Chỉ ADMIN mới có quyền xóa tài khoản." },
+        { status: 403 }
+      );
+    }
+
+    const { id } = await context.params;
+    if (!isValidUuid(id)) {
+      return NextResponse.json(
+        { error: "ID tài khoản không hợp lệ." },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabaseServer.rpc(
+      "admin_delete_user_account",
+      {
+        p_admin_user_id: auth.user.id,
+        p_target_user_id: id,
+      }
+    );
+
+    if (error) {
+      if (error.message.includes("TARGET_NOT_FOUND")) {
+        return NextResponse.json(
+          { error: "Tài khoản không tồn tại hoặc không thuộc USER/MANAGER." },
+          { status: 404 }
+        );
+      }
+      if (error.message.includes("ADMIN_REQUIRED")) {
+        return NextResponse.json(
+          { error: "Chỉ ADMIN đang hoạt động mới có quyền xóa tài khoản." },
+          { status: 403 }
+        );
+      }
+      console.error("ADMIN_DELETE_USER_ERROR:", error);
+      return NextResponse.json(
+        { error: "Không thể xóa tài khoản và dữ liệu liên quan." },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Đã xóa tài khoản ${data}.`,
+    });
+  } catch (error) {
+    console.error("ADMIN_DELETE_USER_ROUTE_ERROR:", error);
+    return NextResponse.json(
+      { error: "Có lỗi xảy ra khi xóa tài khoản." },
+      { status: 500 }
+    );
+  }
+}
