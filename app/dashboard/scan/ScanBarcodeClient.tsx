@@ -126,6 +126,7 @@ export default function ScanBarcodeClient({
   );
   const processingRef = useRef(false);
   const scanQueueRef = useRef<ScanQueueItem[]>([]);
+  const confirmedQuantitiesRef = useRef<Record<string, number>>({});
   const locationNoteRef = useRef("");
   const lastCodeRef = useRef("");
   const lastSeenRef = useRef(0);
@@ -158,6 +159,9 @@ export default function ScanBarcodeClient({
     activeSessionIdRef.current = id;
     setSession(json.session);
     setItems(json.items || []);
+    confirmedQuantitiesRef.current = Object.fromEntries(
+      (json.items || []).map((item: ScanItem) => [item.product_code, item.quantity])
+    );
     pendingCountsRef.current = {};
     setPendingCounts({});
 
@@ -208,6 +212,7 @@ export default function ScanBarcodeClient({
     else next[code] = count;
     pendingCountsRef.current = next;
     setPendingCounts(next);
+    return count;
   }, []);
 
   const createSession = useCallback(async () => {
@@ -434,7 +439,9 @@ export default function ScanBarcodeClient({
           }
 
           const item = json.item as ScanItem;
-          updatePendingCount(nextItem.code, -1);
+          confirmedQuantitiesRef.current[item.product_code] = item.quantity;
+          const remainingForCode = updatePendingCount(nextItem.code, -1);
+          const visibleQuantity = item.quantity + remainingForCode;
 
           if (activeSessionIdRef.current === nextItem.sessionId) {
             setItems((old) => {
@@ -450,15 +457,22 @@ export default function ScanBarcodeClient({
               ...old,
               [item.id]: { quantity: String(item.quantity) },
             }));
-            setMessage(`Đã quét ${item.product_code}, số lượng ${item.quantity}.`);
+            setError("");
+            setMessage(
+              remainingForCode > 0
+                ? `\u0110\u00e3 qu\u00e9t ${item.product_code}, s\u1ed1 l\u01b0\u1ee3ng hi\u1ec7n t\u1ea1i ${visibleQuantity} (\u0111\u00e3 l\u01b0u ${item.quantity}, \u0111ang x\u1eed l\u00fd ${remainingForCode}).`
+                : `\u0110\u00e3 qu\u00e9t ${item.product_code}, s\u1ed1 l\u01b0\u1ee3ng hi\u1ec7n t\u1ea1i ${visibleQuantity}.`
+            );
           }
           playScanSound(true);
         } catch (err) {
-          updatePendingCount(nextItem.code, -1);
+          const remainingForCode = updatePendingCount(nextItem.code, -1);
+          const visibleQuantity =
+            (confirmedQuantitiesRef.current[nextItem.code] || 0) + remainingForCode;
           playScanSound(false);
           setMessage("");
           setError(
-            err instanceof Error ? err.message : `Không thể quét ${nextItem.code}.`
+            `${err instanceof Error ? err.message : `Không thể quét ${nextItem.code}.`} Số lượng hiện tại ${visibleQuantity}.`
           );
         }
       }
@@ -730,6 +744,7 @@ export default function ScanBarcodeClient({
       throw new Error(json.error || "Không lưu được.");
     }
 
+    confirmedQuantitiesRef.current[item.product_code] = json.item.quantity;
     setItems((old) =>
       old.map((row) =>
         row.id === item.id ? json.item : row
@@ -769,6 +784,7 @@ export default function ScanBarcodeClient({
           );
           const json = await readApiResponse(response);
           if (!response.ok) throw new Error(json.error || `Không xóa được (HTTP ${response.status}).`);
+          delete confirmedQuantitiesRef.current[item.product_code];
           setMessage(`Đã xóa mã ${item.product_code}.`);
         } catch (deleteError) {
           setItems(previousItems);

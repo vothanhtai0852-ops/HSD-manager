@@ -621,6 +621,14 @@ export async function DELETE(
     );
 
     if (error) {
+      if (error.code === "PGRST202") {
+        console.error("ADMIN_DELETE_USER_MIGRATION_MISSING:", error);
+        return NextResponse.json(
+          { error: "Ch\u01b0a c\u00e0i h\u00e0m x\u00f3a t\u00e0i kho\u1ea3n tr\u00ean Supabase. H\u00e3y ch\u1ea1y migration 011_admin_delete_user_account.sql." },
+          { status: 503 }
+        );
+      }
+
       if (error.message.includes("TARGET_NOT_FOUND")) {
         return NextResponse.json(
           { error: "Tài khoản không tồn tại hoặc không thuộc USER/MANAGER." },
@@ -635,8 +643,8 @@ export async function DELETE(
       }
       console.error("ADMIN_DELETE_USER_ERROR:", error);
       return NextResponse.json(
-        { error: "Không thể xóa tài khoản và dữ liệu liên quan." },
-        { status: 500 }
+        { error: `Không thể xóa tài khoản và dữ liệu liên quan (mã DB: ${error.code || "unknown"}).` },
+        { status: error.code === "23503" ? 409 : 500 }
       );
     }
 
